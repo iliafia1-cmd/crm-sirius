@@ -1056,8 +1056,7 @@ function updateAssigneeByType(selectedId) {
   const type = document.getElementById('fType').value;
   const sel = document.getElementById('fAssignee');
   const assigned = DB.categoryAssignments[type] || [];
-  const workers = DB.users.filter(u => u.role==='worker');
-  // Show assigned workers first, then others
+  const workers = DB.users.filter(u => u.role==='worker' && !u.fired);
   const inCat = workers.filter(w => assigned.includes(w.id));
   const outCat = workers.filter(w => !assigned.includes(w.id));
   let html = `<option value="">— Не назначен —</option>`;
@@ -1132,23 +1131,53 @@ function renderStaff() {
   const grid = document.getElementById('staffGrid');
   const workers = DB.users.filter(u=>u.role!=='owner');
   if (!workers.length) { grid.innerHTML='<div class="empty"><div class="empty-icon">👤</div><div class="empty-text">Сотрудников нет</div></div>'; return; }
-  grid.innerHTML = workers.map(w => {
+
+  const active = workers.filter(w=>!w.fired);
+  const fired = workers.filter(w=>w.fired);
+
+  const cardHtml = (w) => {
     const initials = w.name.split(' ').map(p=>p[0]).join('').slice(0,2).toUpperCase();
-    const active = DB.requests.filter(r=>r.assignee===w.id&&r.status!=='Выполнена').length;
+    const activeCount = DB.requests.filter(r=>r.assignee===w.id&&r.status!=='Выполнена').length;
+    const totalCount = DB.requests.filter(r=>r.assignee===w.id).length;
     const cats = getWorkTypes().filter(t=>(DB.categoryAssignments[t]||[]).includes(w.id));
-    return `<div class="staff-card">
-      <div class="staff-avatar">${initials}</div>
-      <div class="staff-name">${w.name}</div>
+    return `<div class="staff-card" style="${w.fired?'opacity:0.6;border-style:dashed':''}">
+      <div class="staff-avatar" style="${w.fired?'background:rgba(107,114,148,0.15);color:var(--muted)':''}">${initials}</div>
+      <div class="staff-name">${w.name} ${w.fired?'<span style="font-size:10px;color:var(--danger);background:rgba(255,59,92,0.1);padding:2px 6px;border-radius:4px">уволен</span>':''}</div>
       <div class="staff-role">${w.specialty} · ${w.role==='secretary'?'Секретарь':'Исполнитель'}</div>
       <div class="staff-login">@${w.login}</div>
       <div class="staff-cats">${cats.map(c=>`<span class="cat-tag">${getTypeIcon(c)} ${c}</span>`).join('')}</div>
-      <div style="margin-top:10px;font-size:12px;color:var(--muted)">Активных: <b style="color:var(--text)">${active}</b></div>
+      <div style="margin-top:10px;font-size:12px;color:var(--muted)">
+        ${w.fired?`Всего заявок: <b style="color:var(--text)">${totalCount}</b>`:`Активных: <b style="color:var(--text)">${activeCount}</b>`}
+      </div>
       <div class="staff-actions">
-        <button class="action-btn" onclick="editStaff(${w.id})">✏ Изм.</button>
-        <button class="action-btn danger" onclick="deleteStaff(${w.id})">✕</button>
+        ${!w.fired?`<button class="action-btn" onclick="editStaff(${w.id})">✏ Изм.</button>`:''}
+        <button class="action-btn" onclick="showWorkerHistory(${w.id},'${w.name}')">📋 История</button>
+        ${!w.fired
+          ? `<button class="action-btn danger" onclick="fireStaff(${w.id})">🚫 Уволить</button>`
+          : `<button class="action-btn" onclick="restoreStaff(${w.id})">↩ Восстановить</button>`
+        }
       </div>
     </div>`;
-  }).join('');
+  };
+
+  let html = active.map(cardHtml).join('');
+  if (fired.length) {
+    html += `<div style="grid-column:1/-1;margin-top:8px;padding-top:16px;border-top:1px solid var(--border)">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px">Уволенные сотрудники</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px">${fired.map(cardHtml).join('')}</div>
+    </div>`;
+  }
+  grid.innerHTML = html;
+}
+
+function fireStaff(id) {
+  if (!confirm('Уволить сотрудника? Его история заявок сохранится.')) return;
+  const u = DB.users.find(u=>u.id===id);
+  if (u) { u.fired = true; saveData(); renderStaff(); showToast('Сотрудник уволен'); }
+}
+function restoreStaff(id) {
+  const u = DB.users.find(u=>u.id===id);
+  if (u) { u.fired = false; saveData(); renderStaff(); showToast('Сотрудник восстановлен','success'); }
 }
 
 function openNewStaff() {
@@ -1196,7 +1225,7 @@ function deleteStaff(id) {
 
 // ========== CATEGORIES ==========
 function renderCategories() {
-  const workers = DB.users.filter(u=>u.role==='worker');
+  const workers = DB.users.filter(u=>u.role==='worker' && !u.fired);
   const content = document.getElementById('categoriesContent');
   if (!workers.length) {
     content.innerHTML = '<div class="empty"><div class="empty-icon">👷</div><div class="empty-text">Добавьте сотрудников во вкладке «Сотрудники»</div></div>';
@@ -1387,8 +1416,7 @@ function timeSince(dtStr) {
 }
 
 function renderMonitor() {
-  const workers = DB.users.filter(u => u.role === 'worker');
-  const grid = document.getElementById('monitorGrid');
+  const workers = DB.users.filter(u => u.role === 'worker' && !u.fired);
   const updated = document.getElementById('monitorUpdated');
   if (updated) updated.textContent = 'Обновлено: ' + new Date().toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit'});
   if (!workers.length) { grid.innerHTML = '<div class="empty"><div class="empty-icon">👷</div><div class="empty-text">Нет исполнителей</div></div>'; return; }
