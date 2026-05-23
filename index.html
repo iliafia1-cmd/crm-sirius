@@ -565,6 +565,17 @@
   <button class="btn-install-close" onclick="document.getElementById('installBanner').classList.remove('show')">✕</button>
 </div>
 
+<!-- WORKER HISTORY MODAL -->
+<div class="modal-overlay" id="workerHistoryModal">
+  <div class="modal" style="width:620px;max-height:85vh;overflow-y:auto">
+    <div class="modal-title" id="workerHistoryTitle">История сотрудника</div>
+    <div id="workerHistoryBody"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('workerHistoryModal')">Закрыть</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -1380,47 +1391,99 @@ function renderMonitor() {
   const grid = document.getElementById('monitorGrid');
   const updated = document.getElementById('monitorUpdated');
   if (updated) updated.textContent = 'Обновлено: ' + new Date().toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit'});
+  if (!workers.length) { grid.innerHTML = '<div class="empty"><div class="empty-icon">👷</div><div class="empty-text">Нет исполнителей</div></div>'; return; }
 
-  if (!workers.length) {
-    grid.innerHTML = '<div class="empty"><div class="empty-icon">👷</div><div class="empty-text">Нет исполнителей</div></div>';
-    return;
-  }
+  const taskCard = (r) => {
+    const addr = r.street ? `${r.street}, д.${r.house}${r.apart?' кв.'+r.apart:''}` : (r.address||'—');
+    const elapsed = timeSince(r.startedAt);
+    const over = isOverdue(r);
+    const borderColor = r.status==='Новая'?'var(--new)':r.status==='В работе'?'var(--inprog)':'var(--done)';
+    const sb = r.status==='Новая'?`<span class="badge badge-new" style="font-size:10px">● Новая</span>`:r.status==='В работе'?`<span class="badge badge-inprog" style="font-size:10px">● В работе</span>`:`<span class="badge badge-done" style="font-size:10px">✓ Готово</span>`;
+    return `<div class="monitor-task ${over?'monitor-task-overdue':''}" style="border-left-color:${borderColor}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div class="monitor-task-addr">📍 ${addr}</div>${sb}
+      </div>
+      <div class="monitor-task-type">${getTypeIcon(r.type)} ${r.type}${r.desc?' — '+r.desc.slice(0,50):''}</div>
+      ${elapsed&&r.status==='В работе'?`<div class="monitor-task-time ${over?'overdue':''}">⏱ В работе: ${elapsed}${over?' ⚠':''}</div>`:''}
+      <div style="font-size:11px;color:var(--muted)">Срок: ${r.deadline||'—'} · #${r.id}</div>
+    </div>`;
+  };
 
   grid.innerHTML = workers.map(w => {
     const initials = w.name.split(' ').map(p=>p[0]).join('').slice(0,2).toUpperCase();
-    const activeTasks = DB.requests.filter(r => r.assignee === w.id && r.status === 'В работе');
-    const newTasks = DB.requests.filter(r => r.assignee === w.id && r.status === 'Новая');
+    const activeTasks = DB.requests.filter(r=>r.assignee===w.id&&r.status==='В работе');
+    const newTasks = DB.requests.filter(r=>r.assignee===w.id&&r.status==='Новая');
+    const doneTasks = DB.requests.filter(r=>r.assignee===w.id&&r.status==='Выполнена');
+    const overdueTasks = activeTasks.filter(r=>isOverdue(r));
     const isBusy = activeTasks.length > 0;
-
-    const tasksHtml = activeTasks.map(r => {
-      const addr = r.street ? `${r.street}, д.${r.house}${r.apart?' кв.'+r.apart:''}` : (r.address||'—');
-      const elapsed = timeSince(r.startedAt);
-      const over = isOverdue(r);
-      return `<div class="monitor-task ${over?'monitor-task-overdue':''}">
-        <div class="monitor-task-addr">📍 ${addr}</div>
-        <div class="monitor-task-type">${getTypeIcon(r.type)} ${r.type}${r.desc?' — '+r.desc.slice(0,40):''}</div>
-        ${elapsed ? `<div class="monitor-task-time ${over?'overdue':''}">⏱ В работе: ${elapsed}${over?' ⚠ Просрочено':''}</div>` : ''}
-        <div style="font-size:11px;color:var(--muted)">Срок: ${r.deadline||'—'}</div>
-      </div>`;
-    }).join('');
-
-    const newHtml = newTasks.length
-      ? `<div style="font-size:12px;color:var(--muted);margin-top:8px">Ожидают: <b style="color:var(--new)">${newTasks.length}</b> новых заявок</div>`
-      : '';
-
-    return `<div class="monitor-card ${isBusy?'has-work':'free'}">
-      <div class="monitor-header">
+    return `<div class="monitor-card ${isBusy?'has-work':'free'}" id="mc-${w.id}">
+      <div class="monitor-header" style="cursor:pointer" onclick="toggleMonitorExpand(${w.id})">
         <div class="monitor-avatar">${initials}</div>
-        <div>
+        <div style="flex:1">
           <div class="monitor-name">${w.name}</div>
           <div class="monitor-role">${w.specialty}</div>
+          <div style="font-size:11px;margin-top:4px;display:flex;gap:8px;flex-wrap:wrap">
+            ${activeTasks.length?`<span style="color:var(--inprog)">▶ ${activeTasks.length}</span>`:''}
+            ${overdueTasks.length?`<span style="color:var(--danger)">⚠ ${overdueTasks.length}</span>`:''}
+            ${newTasks.length?`<span style="color:var(--new)">● ${newTasks.length}</span>`:''}
+            ${doneTasks.length?`<span style="color:var(--done)">✓ ${doneTasks.length}</span>`:''}
+          </div>
         </div>
-        <div class="monitor-status ${isBusy?'busy':'free'}">${isBusy?'В работе':'Свободен'}</div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+          <div class="monitor-status ${isBusy?'busy':'free'}">${isBusy?'В работе':'Свободен'}</div>
+          <span id="mc-arrow-${w.id}" style="font-size:14px;color:var(--muted)">▼ развернуть</span>
+        </div>
       </div>
-      ${isBusy ? tasksHtml : '<div style="font-size:13px;color:var(--muted);text-align:center;padding:8px">Нет активных задач</div>'}
-      ${newHtml}
+      <div id="mc-expand-${w.id}" style="display:none">
+        <div style="border-top:1px solid var(--border);padding-top:12px;margin-top:8px">
+          ${activeTasks.length?`<div style="font-size:11px;color:var(--inprog);font-weight:600;margin-bottom:8px">▶ В РАБОТЕ</div>${activeTasks.map(r=>taskCard(r)).join('')}`:''}
+          ${newTasks.length?`<div style="font-size:11px;color:var(--new);font-weight:600;margin:10px 0 8px">● НОВЫЕ</div>${newTasks.map(r=>taskCard(r)).join('')}`:''}
+          ${!activeTasks.length&&!newTasks.length?'<div style="font-size:13px;color:var(--muted);text-align:center;padding:12px">Нет активных задач</div>':''}
+        </div>
+        <button class="action-btn" style="width:100%;text-align:center;padding:8px;margin-top:10px" onclick="showWorkerHistory(${w.id},'${w.name}')">📋 Вся история сотрудника (${activeTasks.length+newTasks.length+doneTasks.length})</button>
+      </div>
     </div>`;
   }).join('');
+}
+
+function toggleMonitorExpand(workerId) {
+  const expand = document.getElementById(`mc-expand-${workerId}`);
+  const arrow = document.getElementById(`mc-arrow-${workerId}`);
+  if (!expand) return;
+  const isOpen = expand.style.display !== 'none';
+  expand.style.display = isOpen ? 'none' : 'block';
+  if (arrow) arrow.textContent = isOpen ? '▼ развернуть' : '▲ свернуть';
+}
+
+function showWorkerHistory(workerId, workerName) {
+  const all = DB.requests.filter(r=>r.assignee===workerId);
+  all.sort((a,b)=>(b.created||'').localeCompare(a.created||''));
+  const done=all.filter(r=>r.status==='Выполнена').length;
+  const inprog=all.filter(r=>r.status==='В работе').length;
+  const newR=all.filter(r=>r.status==='Новая').length;
+  let html = `<div style="margin-bottom:16px">
+    <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:12px">
+      <span>Всего: <b>${all.length}</b></span>
+      <span style="color:var(--done)">✓ Выполнено: <b>${done}</b></span>
+      <span style="color:var(--inprog)">▶ В работе: <b>${inprog}</b></span>
+      <span style="color:var(--new)">● Новых: <b>${newR}</b></span>
+    </div>
+  </div>`;
+  html += all.map(r=>{
+    const addr=r.street?`${r.street}, д.${r.house}${r.apart?' кв.'+r.apart:''}`:( r.address||'—');
+    const over=isOverdue(r);
+    const borderColor=r.status==='Новая'?'var(--new)':r.status==='В работе'?'var(--inprog)':'var(--done)';
+    const sb=r.status==='Новая'?`<span class="badge badge-new" style="font-size:10px">● Новая</span>`:r.status==='В работе'?`<span class="badge badge-inprog" style="font-size:10px">● В работе</span>`:`<span class="badge badge-done" style="font-size:10px">✓ Выполнена</span>`;
+    return `<div class="monitor-task ${over?'monitor-task-overdue':''}" style="border-left-color:${borderColor}">
+      <div style="display:flex;justify-content:space-between"><div style="font-weight:500">📍 ${addr}</div>${sb}</div>
+      <div class="monitor-task-type">${getTypeIcon(r.type)} ${r.type}${r.desc?' — '+r.desc.slice(0,60):''}</div>
+      <div style="font-size:11px;color:var(--muted)">Подана: ${r.created||'—'} · Срок: ${r.deadline||'—'} · #${r.id}</div>
+      ${r.closedBy?`<div style="font-size:11px;color:var(--done)">Закрыл: ${r.closedBy}</div>`:''}
+    </div>`;
+  }).join('') || '<div style="color:var(--muted);font-size:13px;text-align:center;padding:20px">Заявок нет</div>';
+  document.getElementById('workerHistoryTitle').textContent = 'История: ' + workerName;
+  document.getElementById('workerHistoryBody').innerHTML = html;
+  document.getElementById('workerHistoryModal').classList.add('open');
 }
 
 // ========== HISTORY ==========
