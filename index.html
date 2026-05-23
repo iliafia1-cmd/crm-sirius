@@ -1,0 +1,1332 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#4f7cff">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="CRM Sirius">
+<title>CRM Sirius</title>
+<link rel="manifest" href="data:application/json,{
+  %22name%22:%22CRM Sirius%22,
+  %22short_name%22:%22CRM Sirius%22,
+  %22start_url%22:%22.%22,
+  %22display%22:%22standalone%22,
+  %22background_color%22:%22%230f1117%22,
+  %22theme_color%22:%22%234f7cff%22,
+  %22icons%22:[{%22src%22:%22data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='32' fill='%230f1117'/%3E%3Ctext x='96' y='130' font-size='110' text-anchor='middle' fill='%234f7cff' font-family='Arial'%3E⭐%3C/text%3E%3C/svg%3E%22,%22sizes%22:%22192x192%22,%22type%22:%22image/svg+xml%22}]
+}">
+<script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;600;700&family=Golos+Text:wght@400;500;600&display=swap" rel="stylesheet">
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  const firebaseConfig = {
+    apiKey: "AIzaSyB9likr1eN1BmI0iQEJXsrp7oJxEvDE-UY",
+    authDomain: "crm-sirius.firebaseapp.com",
+    projectId: "crm-sirius",
+    storageBucket: "crm-sirius.firebasestorage.app",
+    messagingSenderId: "517449263623",
+    appId: "1:517449263623:web:1ce2059db53dcbc5d158a2"
+  };
+  const fbApp = initializeApp(firebaseConfig);
+  const fbDb = getFirestore(fbApp);
+  const DB_DOC = doc(fbDb, 'crm', 'data');
+
+  window._fbSave = async function(data) {
+    try { await setDoc(DB_DOC, JSON.parse(JSON.stringify(data))); }
+    catch(e) { console.error('Firebase save error:', e); }
+  };
+  window._fbListen = function(callback) {
+    onSnapshot(DB_DOC, snap => { if (snap.exists()) callback(snap.data()); });
+  };
+  window._fbInit = async function(defaultData) {
+    try {
+      const snap = await getDoc(DB_DOC);
+      if (!snap.exists()) { await setDoc(DB_DOC, JSON.parse(JSON.stringify(defaultData))); return defaultData; }
+      return snap.data();
+    } catch(e) { console.error('Firebase init error:', e); return defaultData; }
+  };
+
+  const ONESIGNAL_APP_ID = "21e63862-1934-4bd1-9e55-1b67fb38c87d";
+  const ONESIGNAL_API_KEY = "os_v2_app_ehtdqyqzgrf5dhsvdnt7wogipvzmjbrshsxussfhjwq6r4bjm7k5suy5baslea6lm63zuh7dq3khchsk72ihnftne7t3rhzjoznjrzy";
+
+  // OneSignal init
+  window._initPush = async function(userId) {
+    try {
+      window.OneSignalDeferred = window.OneSignalDeferred || [];
+      window.OneSignalDeferred.push(async function(OneSignal) {
+        await OneSignal.init({
+          appId: ONESIGNAL_APP_ID,
+          notifyButton: { enable: false },
+          allowLocalhostAsSecureOrigin: true,
+        });
+        await OneSignal.login(String(userId));
+        await OneSignal.Notifications.requestPermission();
+      });
+    } catch(e) { console.warn('OneSignal init error:', e); }
+  };
+
+  window._sendPushToUser = async function(userId, title, body) {
+    try {
+      const ONESIGNAL_APP_ID = "21e63862-1934-4bd1-9e55-1b67fb38c87d";
+      const ONESIGNAL_API_KEY = "os_v2_app_ehtdqyqzgrf5dhsvdnt7wogipvzmjbrshsxussfhjwq6r4bjm7k5suy5baslea6lm63zuh7dq3khchsk72ihnftne7t3rhzjoznjrzy";
+      await fetch("https://corsproxy.io/?" + encodeURIComponent("https://api.onesignal.com/notifications?c=push"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Key " + ONESIGNAL_API_KEY
+        },
+        body: JSON.stringify({
+          app_id: ONESIGNAL_APP_ID,
+          target_channel: "push",
+          include_aliases: { external_id: [String(userId)] },
+          headings: { en: title, ru: title },
+          contents: { en: body, ru: body },
+        })
+      });
+    } catch(e) { console.warn('Push send error:', e); }
+  };
+
+  setTimeout(() => document.dispatchEvent(new CustomEvent('firebaseReady')), 100);
+</script>
+<style>
+  :root {
+    --bg: #0f1117; --surface: #181c27; --surface2: #1f2335; --border: #2a2f45;
+    --accent: #4f7cff; --accent2: #00d4aa; --warn: #ff6b35; --danger: #ff3b5c;
+    --text: #e8eaf0; --muted: #6b7294; --new: #4f7cff; --inprog: #f5a623; --done: #00d4aa;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Golos Text', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  #loginScreen {
+    display: flex; align-items: center; justify-content: center; min-height: 100vh;
+    background: radial-gradient(ellipse at 30% 20%, #1a2040 0%, #0f1117 60%);
+  }
+  .login-box {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+    padding: 48px 40px; width: 380px; box-shadow: 0 24px 80px rgba(0,0,0,0.5);
+  }
+  .login-logo { font-family: 'Unbounded', sans-serif; font-size: 26px; font-weight: 700; color: var(--accent); letter-spacing: -1px; margin-bottom: 4px; }
+  .login-sub { color: var(--muted); font-size: 13px; margin-bottom: 36px; }
+  .field-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+  .field-input {
+    width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 14px; color: var(--text); font-family: inherit; font-size: 14px; outline: none; transition: border-color 0.2s;
+  }
+  .field-input:focus { border-color: var(--accent); }
+  .field-group { margin-bottom: 18px; }
+  .btn-primary {
+    width: 100%; background: var(--accent); color: #fff; border: none; border-radius: 8px;
+    padding: 12px; font-family: 'Unbounded', sans-serif; font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: opacity 0.2s; letter-spacing: 0.3px; margin-top: 8px;
+  }
+  .btn-primary:hover { opacity: 0.85; }
+  .login-error { color: var(--danger); font-size: 13px; margin-top: 12px; display: none; }
+
+  #app { display: none; min-height: 100vh; }
+  .topbar {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 0 24px; height: 56px; display: flex; align-items: center; gap: 16px;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .topbar-logo { font-family: 'Unbounded', sans-serif; font-size: 15px; font-weight: 700; color: var(--accent); letter-spacing: -0.5px; }
+  .topbar-nav { display: flex; gap: 4px; margin-left: 24px; }
+  .nav-btn {
+    padding: 6px 14px; border-radius: 6px; border: none; background: transparent;
+    color: var(--muted); font-family: inherit; font-size: 13px; cursor: pointer; transition: all 0.15s;
+  }
+  .nav-btn:hover { color: var(--text); background: var(--surface2); }
+  .nav-btn.active { color: var(--accent); background: rgba(79,124,255,0.12); }
+  .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+  .user-badge { font-size: 12px; color: var(--muted); background: var(--surface2); padding: 4px 10px; border-radius: 20px; border: 1px solid var(--border); }
+  .user-badge span { color: var(--text); font-weight: 500; }
+  .btn-logout { font-size: 12px; color: var(--muted); background: none; border: none; cursor: pointer; font-family: inherit; transition: color 0.15s; }
+  .btn-logout:hover { color: var(--danger); }
+
+  .content { padding: 28px 24px; max-width: 1280px; margin: 0 auto; }
+  .tab-pane { display: none; }
+  .tab-pane.active { display: block; }
+
+  /* STATS */
+  .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 24px; }
+  .stat-card {
+    background: var(--surface); border: 2px solid var(--border); border-radius: 12px;
+    padding: 18px 20px; cursor: pointer; transition: all 0.2s; user-select: none;
+  }
+  .stat-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .stat-card.active-filter { border-color: var(--accent); background: rgba(79,124,255,0.08); }
+  .stat-card.active-filter.prog { border-color: var(--inprog); background: rgba(245,166,35,0.08); }
+  .stat-card.active-filter.done { border-color: var(--done); background: rgba(0,212,170,0.08); }
+  .stat-card.active-filter.over { border-color: var(--danger); background: rgba(255,59,92,0.08); }
+  .stat-num { font-family: 'Unbounded', sans-serif; font-size: 28px; font-weight: 700; line-height: 1; }
+  .stat-label { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .stat-hint { font-size: 10px; color: var(--muted); margin-top: 4px; opacity: 0.6; }
+  .stat-new .stat-num { color: var(--new); }
+  .stat-prog .stat-num { color: var(--inprog); }
+  .stat-done .stat-num { color: var(--done); }
+  .stat-over .stat-num { color: var(--danger); }
+
+  .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .section-title { font-family: 'Unbounded', sans-serif; font-size: 14px; font-weight: 600; }
+  .section-actions { display: flex; gap: 8px; }
+  .btn-add {
+    background: var(--accent); color: #fff; border: none; border-radius: 8px;
+    padding: 8px 16px; font-family: 'Unbounded', sans-serif; font-size: 11px;
+    font-weight: 600; cursor: pointer; transition: opacity 0.2s; letter-spacing: 0.3px;
+  }
+  .btn-add:hover { opacity: 0.85; }
+
+  .filters { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+  .filter-btn {
+    padding: 5px 12px; border-radius: 20px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--muted); font-family: inherit; font-size: 12px; cursor: pointer; transition: all 0.15s;
+  }
+  .filter-btn:hover, .filter-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(79,124,255,0.1); }
+  .filter-select {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    color: var(--text); padding: 5px 10px; font-family: inherit; font-size: 12px; outline: none; cursor: pointer;
+  }
+  .active-filter-bar {
+    background: rgba(79,124,255,0.08); border: 1px solid rgba(79,124,255,0.3);
+    border-radius: 8px; padding: 8px 14px; font-size: 12px; color: var(--accent);
+    display: flex; align-items: center; gap: 10px; margin-bottom: 12px;
+  }
+  .clear-filter-btn { background: none; border: none; color: var(--muted); cursor: pointer; font-family: inherit; font-size: 12px; }
+  .clear-filter-btn:hover { color: var(--danger); }
+
+  .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: var(--surface2); padding: 10px 16px; text-align: left; font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); }
+  td { padding: 12px 16px; font-size: 13px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+
+  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .badge-new { background: rgba(79,124,255,0.15); color: var(--new); }
+  .badge-inprog { background: rgba(245,166,35,0.15); color: var(--inprog); }
+  .badge-done { background: rgba(0,212,170,0.15); color: var(--done); }
+  .type-badge { padding: 2px 8px; border-radius: 4px; font-size: 11px; background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
+  .action-btn { padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); color: var(--muted); font-family: inherit; font-size: 11px; cursor: pointer; transition: all 0.15s; margin-right: 4px; }
+  .action-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .action-btn.danger:hover { border-color: var(--danger); color: var(--danger); }
+  .overdue-row td { background: rgba(255,59,92,0.04); }
+
+  /* MODAL */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 1000; align-items: center; justify-content: center; padding: 20px; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 32px; width: 580px; max-height: 90vh; overflow-y: auto; box-shadow: 0 32px 80px rgba(0,0,0,0.6); }
+  .modal-wide { width: 720px; }
+  .modal-title { font-family: 'Unbounded', sans-serif; font-size: 16px; font-weight: 700; margin-bottom: 24px; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+  .form-row.single { grid-template-columns: 1fr; }
+  .form-row.triple { grid-template-columns: 1fr 1fr 1fr; }
+  .field-select { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; color: var(--text); font-family: inherit; font-size: 14px; outline: none; transition: border-color 0.2s; appearance: none; }
+  .field-select:focus { border-color: var(--accent); }
+  textarea.field-input { resize: vertical; min-height: 80px; }
+  .modal-actions { display: flex; gap: 10px; margin-top: 24px; justify-content: flex-end; }
+  .btn-cancel { padding: 10px 20px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2); color: var(--muted); font-family: inherit; font-size: 13px; cursor: pointer; }
+  .btn-cancel:hover { color: var(--text); }
+  .btn-save { padding: 10px 24px; border-radius: 8px; border: none; background: var(--accent); color: #fff; font-family: 'Unbounded', sans-serif; font-size: 12px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
+  .btn-save:hover { opacity: 0.85; }
+
+  /* STAFF */
+  .staff-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+  .staff-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; transition: border-color 0.2s; }
+  .staff-card:hover { border-color: var(--accent); }
+  .staff-avatar { width: 44px; height: 44px; border-radius: 50%; background: rgba(79,124,255,0.15); display: flex; align-items: center; justify-content: center; font-family: 'Unbounded', sans-serif; font-size: 16px; color: var(--accent); font-weight: 700; margin-bottom: 12px; }
+  .staff-name { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+  .staff-role { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+  .staff-login { font-size: 11px; color: var(--accent); background: rgba(79,124,255,0.1); padding: 2px 8px; border-radius: 4px; display: inline-block; }
+  .staff-cats { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+  .cat-tag { font-size: 10px; padding: 2px 6px; border-radius: 3px; background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
+  .staff-actions { margin-top: 14px; display: flex; gap: 8px; }
+
+  /* CATEGORY ASSIGNMENTS */
+  .cat-section { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 14px; }
+  .cat-section-title { font-family: 'Unbounded', sans-serif; font-size: 13px; font-weight: 600; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+  .cat-workers-list { display: flex; flex-wrap: wrap; gap: 8px; }
+  .cat-worker-chip {
+    display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 20px;
+    border: 1px solid var(--border); background: var(--surface2); font-size: 12px; cursor: pointer; transition: all 0.15s;
+  }
+  .cat-worker-chip.assigned { border-color: var(--accent); background: rgba(79,124,255,0.12); color: var(--accent); }
+  .cat-worker-chip:hover { border-color: var(--accent); }
+
+  .offline-bar {
+    display: none; position: fixed; top: 56px; left: 0; right: 0;
+    background: #f5a623; color: #000; text-align: center;
+    padding: 6px 16px; font-size: 12px; font-weight: 600; z-index: 200;
+  }
+  .offline-bar.show { display: block; }
+  .topbar { top: 0; }
+  .empty-icon { font-size: 40px; margin-bottom: 12px; }
+  .empty-text { font-size: 14px; }
+
+  .install-banner {
+    display: none; position: fixed; bottom: 0; left: 0; right: 0;
+    background: var(--surface); border-top: 1px solid var(--border);
+    padding: 14px 20px; z-index: 500; align-items: center; gap: 12px;
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.3);
+  }
+  .install-banner.show { display: flex; }
+  .install-banner-text { flex: 1; font-size: 13px; }
+  .install-banner-text b { color: var(--accent); }
+  .btn-install { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-family: 'Unbounded', sans-serif; font-size: 11px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+  .btn-install-close { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 18px; padding: 4px; }
+
+  .toast { position: fixed; bottom: 24px; right: 24px; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 14px 20px; font-size: 13px; color: var(--text); z-index: 9999; box-shadow: 0 8px 32px rgba(0,0,0,0.4); transform: translateY(100px); opacity: 0; transition: all 0.3s; pointer-events: none; }
+  .toast.show { transform: translateY(0); opacity: 1; }
+  .toast.success { border-color: var(--done); }
+  .toast.error { border-color: var(--danger); }
+
+  /* MOBILE CARDS */
+  .request-cards { display: none; flex-direction: column; gap: 10px; }
+  .request-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px;
+  }
+  .request-card.overdue { border-color: var(--danger); background: rgba(255,59,92,0.04); }
+  .rc-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 8px; }
+  .rc-name { font-weight: 600; font-size: 14px; }
+  .rc-id { font-size: 11px; color: var(--muted); }
+  .rc-addr { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .rc-desc { font-size: 12px; color: var(--muted); margin-bottom: 8px; font-style: italic; }
+  .rc-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; align-items: center; }
+  .rc-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .rc-actions .action-btn { flex: 1; text-align: center; padding: 8px; font-size: 12px; }
+
+  @media (max-width: 768px) {
+    .stats-row { grid-template-columns: repeat(2, 1fr); }
+    .form-row, .form-row.triple { grid-template-columns: 1fr; }
+    .modal { width: 100%; padding: 20px; }
+    .table-wrap { display: none; }
+    .request-cards { display: flex; }
+    .content { padding: 16px 12px; }
+    #tab-settings > div { grid-template-columns: 1fr !important; }
+  }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="loginScreen">
+  <div class="login-box">
+    <div class="login-logo">CRM Sirius</div>
+    <div class="login-sub">Управление заявками жилых домов</div>
+    <div class="field-group">
+      <div class="field-label">Логин</div>
+      <input class="field-input" id="loginInput" type="text" placeholder="Введите логин" autocomplete="off">
+    </div>
+    <div class="field-group">
+      <div class="field-label">Пароль</div>
+      <input class="field-input" id="passInput" type="password" placeholder="Введите пароль">
+    </div>
+    <button class="btn-primary" onclick="doLogin()">Войти</button>
+    <div class="login-error" id="loginError">Неверный логин или пароль</div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <div class="topbar">
+    <div class="topbar-logo">CRM Sirius</div>
+    <div class="topbar-nav" id="topNav"></div>
+    <div class="topbar-right">
+      <div class="user-badge" id="userBadge"></div>
+      <button class="btn-logout" onclick="doLogout()">Выйти</button>
+    </div>
+  </div>
+  <div class="content">
+
+    <!-- ЗАЯВКИ -->
+    <div class="tab-pane" id="tab-requests">
+      <div class="stats-row" id="statsRow"></div>
+      <div id="activeFilterBar" style="display:none"></div>
+      <div class="section-header">
+        <div class="section-title">Заявки</div>
+        <div class="section-actions">
+          <button class="btn-add" id="btnNewRequest" onclick="openNewRequest()" style="display:none">+ Новая заявка</button>
+        </div>
+      </div>
+      <div class="filters" id="filtersRow"></div>
+      <div class="table-wrap">
+        <table><thead><tr id="tableHead"></tr></thead><tbody id="requestsBody"></tbody></table>
+      </div>
+      <div class="request-cards" id="requestCards"></div>
+    </div>
+
+    <!-- СОТРУДНИКИ -->
+    <div class="tab-pane" id="tab-staff">
+      <div class="section-header">
+        <div class="section-title">Сотрудники</div>
+        <button class="btn-add" onclick="openNewStaff()">+ Добавить</button>
+      </div>
+      <div class="staff-grid" id="staffGrid"></div>
+    </div>
+
+    <!-- РАСПРЕДЕЛЕНИЕ ПО КАТЕГОРИЯМ -->
+    <div class="tab-pane" id="tab-categories">
+      <div class="section-header">
+        <div class="section-title">Исполнители по категориям</div>
+        <div style="font-size:12px;color:var(--muted)">Нажмите на имя, чтобы назначить/снять</div>
+      </div>
+      <div id="categoriesContent"></div>
+    </div>
+
+    <!-- ОБЪЕКТЫ И НАСТРОЙКИ -->
+    <div class="tab-pane" id="tab-settings">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
+        <!-- АДРЕСА -->
+        <div>
+          <div class="section-header">
+            <div class="section-title">🏠 Адреса объектов</div>
+            <button class="btn-add" onclick="openAddAddress()">+ Добавить</button>
+          </div>
+          <div class="table-wrap">
+            <table><thead><tr><th>Улица</th><th>Дом</th><th></th></tr></thead>
+            <tbody id="addressesBody"></tbody></table>
+          </div>
+        </div>
+        <!-- ТИПЫ РАБОТ -->
+        <div>
+          <div class="section-header">
+            <div class="section-title">🔨 Типы работ</div>
+            <button class="btn-add" onclick="openAddWorkType()">+ Добавить</button>
+          </div>
+          <div class="table-wrap">
+            <table><thead><tr><th>Название</th><th>Иконка</th><th>Срок (дней)</th><th></th></tr></thead>
+            <tbody id="workTypesBody"></tbody></table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+<!-- REQUEST MODAL -->
+<div class="modal-overlay" id="requestModal">
+  <div class="modal">
+    <div class="modal-title" id="modalTitle">Новая заявка</div>
+    <div class="form-row">
+      <div><div class="field-label">Имя жильца *</div><input class="field-input" id="fName"></div>
+      <div><div class="field-label">Телефон *</div><input class="field-input" id="fPhone"></div>
+    </div>
+    <div class="form-row triple">
+      <div><div class="field-label">Улица *</div><select class="field-select" id="fStreet" onchange="updateHouseList()"><option value="">— Выберите улицу —</option></select></div>
+      <div><div class="field-label">Дом *</div><select class="field-select" id="fHouse"><option value="">— Дом —</option></select></div>
+      <div><div class="field-label">Подъезд</div><input class="field-input" id="fEntrance"></div>
+    </div>
+    <div class="form-row">
+      <div><div class="field-label">Этаж</div><input class="field-input" id="fFloor"></div>
+      <div><div class="field-label">Квартира</div><input class="field-input" id="fApart"></div>
+    </div>
+    <div class="form-row">
+      <div>
+        <div class="field-label">Тип работы</div>
+        <select class="field-select" id="fType" onchange="updateAssigneeByType();updateAutoDeadline()">
+        </select>
+      </div>
+      <div>
+        <div class="field-label">Исполнитель</div>
+        <select class="field-select" id="fAssignee"></select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div><div class="field-label">Дата и время подачи</div><input class="field-input" id="fCreated" type="text" readonly style="opacity:0.6;cursor:not-allowed"></div>
+      <div><div class="field-label">Макс. срок решения</div><input class="field-input" id="fDeadline" type="date" readonly style="opacity:0.6;cursor:not-allowed"></div>
+    </div>
+    <div class="form-row" id="fStartedAtRow" style="display:none">
+      <div><div class="field-label">Принята в работу</div><input class="field-input" id="fStartedAt" type="text" readonly style="opacity:0.6;cursor:not-allowed"></div>
+      <div></div>
+    </div>
+    <div class="form-row single">
+      <div>
+        <div class="field-label">Статус</div>
+        <select class="field-select" id="fStatus">
+          <option value="Новая">Новая</option>
+          <option value="В работе">В работе</option>
+          <option value="Выполнена">Выполнена</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row single"><div><div class="field-label">Описание проблемы</div><textarea class="field-input" id="fDesc"></textarea></div></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('requestModal')">Отмена</button>
+      <button class="btn-save" onclick="saveRequest()">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- STAFF MODAL -->
+<div class="modal-overlay" id="staffModal">
+  <div class="modal">
+    <div class="modal-title" id="staffModalTitle">Новый сотрудник</div>
+    <div class="form-row">
+      <div><div class="field-label">Имя</div><input class="field-input" id="sfName" placeholder="Иван Петров"></div>
+      <div><div class="field-label">Специальность</div><input class="field-input" id="sfRole" placeholder="Сантехник"></div>
+    </div>
+    <div class="form-row">
+      <div><div class="field-label">Логин</div><input class="field-input" id="sfLogin" placeholder="petrov" autocomplete="off"></div>
+      <div><div class="field-label">Пароль</div><div style="position:relative"><input class="field-input" id="sfPass" type="password" placeholder="Пароль" autocomplete="off" style="padding-right:40px"><button type="button" onclick="togglePass()" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);font-size:16px" id="passToggleBtn">👁</button></div></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('staffModal')">Отмена</button>
+      <button class="btn-save" onclick="saveStaff()">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADDRESS MODAL -->
+<div class="modal-overlay" id="addressModal">
+  <div class="modal" style="width:400px">
+    <div class="modal-title" id="addressModalTitle">Новый адрес</div>
+    <div class="form-row single"><div><div class="field-label">Улица</div><input class="field-input" id="aStreet" placeholder="ул. Ленина"></div></div>
+    <div class="form-row single"><div><div class="field-label">Номер дома</div><input class="field-input" id="aHouse" placeholder="12"></div></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('addressModal')">Отмена</button>
+      <button class="btn-save" onclick="saveAddress()">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- WORK TYPE MODAL -->
+<div class="modal-overlay" id="workTypeModal">
+  <div class="modal" style="width:400px">
+    <div class="modal-title" id="workTypeModalTitle">Новый тип работы</div>
+    <div class="form-row single"><div><div class="field-label">Название</div><input class="field-input" id="wtName" placeholder="Сантехника"></div></div>
+    <div class="form-row"><div><div class="field-label">Иконка (эмодзи)</div><input class="field-input" id="wtIcon" placeholder="🔧" style="font-size:20px"></div>
+    <div><div class="field-label">Срок исполнения (дней)</div><input class="field-input" id="wtDays" type="number" min="1" value="1"></div></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('workTypeModal')">Отмена</button>
+      <button class="btn-save" onclick="saveWorkType()">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<div class="offline-bar" id="offlineBar">📵 Офлайн — показаны последние загруженные данные. Изменения недоступны.</div>
+  <div class="install-banner-text">Добавьте <b>CRM Sirius</b> на экран телефона как приложение</div>
+  <button class="btn-install" id="installBtn">Установить</button>
+  <button class="btn-install-close" onclick="document.getElementById('installBanner').classList.remove('show')">✕</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ========== CATEGORIES ==========
+// WORK_TYPES now loaded from DB dynamically
+const TYPE_ICONS = { 'Сантехника':'🔧','Электрика':'⚡','Уборка/Дворник':'🧹','Лифты':'🛗','Общестроительные':'🏗️','Другое':'📋' };
+function getWorkTypes() { return (DB.workTypes||[]).map(w=>w.name); }
+function getTypeIcon(name) { const wt = (DB.workTypes||[]).find(w=>w.name===name); return wt ? wt.icon : (TYPE_ICONS[name]||'📋'); }
+function getTypeDays(name) { const wt = (DB.workTypes||[]).find(w=>w.name===name); return wt ? (wt.days||1) : 1; }
+
+// ========== DATA ==========
+const DEFAULT_DATA = {
+  users: [
+    { id: 1, name: 'Владелец', login: 'admin', pass: 'admin123', role: 'owner', specialty: 'Владелец' },
+    { id: 2, name: 'Секретарь', login: 'secretary', pass: 'sec123', role: 'secretary', specialty: 'Секретарь' },
+    { id: 3, name: 'Алексей Смирнов', login: 'smirnov', pass: 'work123', role: 'worker', specialty: 'Сантехник' },
+    { id: 4, name: 'Дмитрий Козлов', login: 'kozlov', pass: 'work123', role: 'worker', specialty: 'Электрик' },
+    { id: 5, name: 'Сергей Васильев', login: 'vasiliev', pass: 'work123', role: 'worker', specialty: 'Дворник' },
+  ],
+  categoryAssignments: {
+    'Сантехника': [3], 'Электрика': [4], 'Уборка/Дворник': [5],
+    'Лифты': [3, 4], 'Общестроительные': [3, 4, 5], 'Другое': [3, 4, 5]
+  },
+  workTypes: [
+    { id: 1, name: 'Сантехника', icon: '🔧', days: 1 },
+    { id: 2, name: 'Электрика', icon: '⚡', days: 1 },
+    { id: 3, name: 'Уборка/Дворник', icon: '🧹', days: 1 },
+    { id: 4, name: 'Лифты', icon: '🛗', days: 1 },
+    { id: 5, name: 'Общестроительные', icon: '🏗️', days: 1 },
+    { id: 6, name: 'Другое', icon: '📋', days: 1 },
+  ],
+  addresses: [
+    { id: 1, street: 'Апанасенко', house: '56а' },
+    { id: 2, street: 'Апанасенко', house: '97' },
+    { id: 3, street: 'Белгородского Полка', house: '62' },
+    { id: 4, street: 'Белгородского Полка', house: '78' },
+    { id: 5, street: 'Богдана Хмельницкого', house: '80а' },
+    { id: 6, street: 'Вокзальная', house: '26а' },
+    { id: 7, street: 'Вокзальная', house: '26а стр. 1' },
+    { id: 8, street: 'Гражданский Проспект', house: '18' },
+    { id: 9, street: 'Гражданский Проспект', house: '25' },
+    { id: 10, street: 'Гражданский Проспект', house: '36' },
+    { id: 11, street: 'Есенина', house: '9 корп 1' },
+    { id: 12, street: 'Есенина', house: '9 корп 2' },
+    { id: 13, street: 'Есенина', house: '9 корп 3' },
+    { id: 14, street: 'Костюкова', house: '11в' },
+    { id: 15, street: 'Кирпичная', house: '65' },
+    { id: 16, street: 'Кирпичная', house: '65 стр. 1' },
+    { id: 17, street: 'Кирпичная', house: '65 стр. 2' },
+    { id: 18, street: 'Кирпичная', house: '65б' },
+    { id: 19, street: 'Народный Бульвар', house: '3а' },
+    { id: 20, street: 'Парковая', house: '8' },
+    { id: 21, street: 'Чапаева', house: '14А' },
+    { id: 22, street: 'Щорса', house: '8Б' },
+    { id: 23, street: 'Щорса', house: '8М' },
+    { id: 24, street: 'Щорса', house: '8М корп 1' },
+    { id: 25, street: 'Максима Горького', house: '97/1' },
+  ],
+  requests: [
+    { id: 1, name: 'Петрова Анна', phone: '+7 900 111 22 33', street: 'ул. Ленина', house: '12', entrance: '2', floor: '4', apart: '', type: 'Сантехника', desc: 'Течёт кран на кухне', assignee: 3, deadline: '2026-05-20', status: 'В работе', created: '2026-05-17' },
+    { id: 2, name: 'Иванов Николай', phone: '+7 900 222 33 44', street: 'пр. Мира', house: '5', entrance: '1', floor: '7', apart: '', type: 'Электрика', desc: 'Не работает розетка в комнате', assignee: 4, deadline: '2026-05-19', status: 'Новая', created: '2026-05-18' },
+    { id: 3, name: 'Соколова Елена', phone: '+7 900 333 44 55', street: 'ул. Садовая', house: '8', entrance: '3', floor: '2', apart: '', type: 'Уборка/Дворник', desc: 'Мусор в подъезде', assignee: 5, deadline: '2026-05-15', status: 'Выполнена', created: '2026-05-14' },
+  ],
+  nextId: { user: 6, request: 4, address: 26, workType: 7 }
+};
+
+let DB = JSON.parse(JSON.stringify(DEFAULT_DATA));
+let currentUser = null;
+let _fbListening = false;
+let _isOnline = navigator.onLine;
+
+function updateOnlineStatus() {
+  _isOnline = navigator.onLine;
+  const bar = document.getElementById('offlineBar');
+  if (bar) { _isOnline ? bar.classList.remove('show') : bar.classList.add('show'); }
+  const btn = document.getElementById('btnNewRequest');
+  if (btn) btn.disabled = !_isOnline;
+}
+window.addEventListener('online', () => { updateOnlineStatus(); if (currentUser) renderRequests(); });
+window.addEventListener('offline', updateOnlineStatus);
+
+async function initDB() {
+  showLoadingScreen(true);
+  if (!navigator.onLine) {
+    try {
+      const cached = localStorage.getItem('crm_sirius_cache');
+      if (cached) DB = JSON.parse(cached);
+    } catch(e) {}
+    showLoadingScreen(false);
+    updateOnlineStatus();
+    return;
+  }
+  if (window._fbInit) {
+    DB = await window._fbInit(DEFAULT_DATA);
+    try { localStorage.setItem('crm_sirius_cache', JSON.stringify(DB)); } catch(e) {}
+  }
+  showLoadingScreen(false);
+  updateOnlineStatus();
+}
+
+function saveData() {
+  if (!_isOnline) { showToast('Нет интернета — изменения недоступны офлайн','error'); return; }
+  if (window._fbSave) window._fbSave(DB);
+  try { localStorage.setItem('crm_sirius_cache', JSON.stringify(DB)); } catch(e) {}
+}
+
+function startLiveSync() {
+  if (_fbListening || !window._fbListen) return;
+  _fbListening = true;
+  window._fbListen(data => {
+    DB = data;
+    try { localStorage.setItem('crm_sirius_cache', JSON.stringify(DB)); } catch(e) {}
+    if (currentUser) {
+      const activeTab = document.querySelector('.tab-pane.active');
+      if (activeTab) {
+        const id = activeTab.id.replace('tab-','');
+        if (id==='requests') renderRequests();
+        if (id==='staff') renderStaff();
+        if (id==='categories') renderCategories();
+        if (id==='settings') renderSettings();
+      }
+    }
+  });
+}
+
+function showLoadingScreen(show) {
+  let el = document.getElementById('loadingScreen');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'loadingScreen';
+    el.style.cssText = 'position:fixed;inset:0;background:#0f1117;display:flex;align-items:center;justify-content:center;z-index:9999;font-family:Unbounded,sans-serif;color:#4f7cff;font-size:14px;flex-direction:column;gap:12px;';
+    el.innerHTML = '<div style="font-size:22px;font-weight:700">CRM Sirius</div><div style="color:#6b7294;font-size:12px">Подключение к базе данных...</div>';
+    document.body.appendChild(el);
+  }
+  el.style.display = show ? 'flex' : 'none';
+}
+let editingRequestId = null;
+let editingStaffId = null;
+let filterStatus = 'all';
+let filterAssignee = 'all';
+let statCardFilter = null; // 'Новая','В работе','Выполнена','overdue'
+
+// ========== AUTH ==========
+function doLogin() {
+  const login = document.getElementById('loginInput').value.trim();
+  const pass = document.getElementById('passInput').value;
+  const user = DB.users.find(u => u.login === login && u.pass === pass);
+  if (!user) { document.getElementById('loginError').style.display = 'block'; return; }
+  currentUser = user;
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  startLiveSync();
+  // Init push notifications for workers and secretary
+  if (window._initPush && user.role !== 'owner') {
+    window._initPush(user.id);
+  }
+  initApp();
+}
+document.getElementById('passInput').addEventListener('keydown', e => { if (e.key==='Enter') doLogin(); });
+document.getElementById('loginInput').addEventListener('keydown', e => { if (e.key==='Enter') doLogin(); });
+
+function doLogout() {
+  currentUser = null; statCardFilter = null;
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('loginInput').value = '';
+  document.getElementById('passInput').value = '';
+  document.getElementById('loginError').style.display = 'none';
+}
+
+// ========== APP INIT ==========
+function initApp() {
+  const badge = document.getElementById('userBadge');
+  const roleLabel = { owner:'Владелец', secretary:'Секретарь', worker:'Исполнитель' };
+  badge.innerHTML = `<span>${currentUser.name}</span> · ${roleLabel[currentUser.role]}`;
+  buildNav();
+  switchTab('requests');
+}
+
+function buildNav() {
+  const nav = document.getElementById('topNav');
+  nav.innerHTML = '';
+  const tabs = [{ id:'requests', label:'Заявки' }];
+  if (currentUser.role === 'owner') {
+    tabs.push({ id:'staff', label:'Сотрудники' });
+    tabs.push({ id:'categories', label:'Категории' });
+    tabs.push({ id:'settings', label:'⚙ Объекты' });
+  }
+  tabs.forEach((t,i) => {
+    const btn = document.createElement('button');
+    btn.className = 'nav-btn' + (i===0?' active':'');
+    btn.textContent = t.label;
+    btn.dataset.tab = t.id;
+    btn.onclick = () => switchTab(t.id);
+    nav.appendChild(btn);
+  });
+}
+
+function switchTab(id) {
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-'+id).classList.add('active');
+  const btn = document.querySelector(`.nav-btn[data-tab="${id}"]`);
+  if (btn) btn.classList.add('active');
+  if (id==='requests') renderRequests();
+  if (id==='staff') renderStaff();
+  if (id==='categories') renderCategories();
+  if (id==='settings') renderSettings();
+}
+
+// ========== STATS CARD FILTER ==========
+function clickStatCard(type) {
+  // type: 'Новая', 'В работе', 'Выполнена', 'overdue'
+  if (statCardFilter === type) {
+    statCardFilter = null;
+  } else {
+    statCardFilter = type;
+  }
+  renderRequests();
+}
+
+// ========== REQUESTS ==========
+function isOverdue(r) {
+  if (r.status === 'Выполнена') return false;
+  return r.deadline && new Date(r.deadline) < new Date(new Date().toDateString());
+}
+
+function getBaseRequests() {
+  let list = DB.requests;
+  if (currentUser.role === 'worker') {
+    list = list.filter(r => {
+      // Show if assigned to this worker
+      if (r.assignee === currentUser.id) return true;
+      // Show if unassigned AND this worker is in the category
+      if (!r.assignee) {
+        const catWorkers = DB.categoryAssignments[r.type] || [];
+        return catWorkers.includes(currentUser.id);
+      }
+      return false;
+    });
+  }
+  return list;
+}
+
+function getFilteredRequests() {
+  let list = getBaseRequests();
+  // stat card filter (overrides status filter)
+  if (statCardFilter === 'overdue') {
+    list = list.filter(r => isOverdue(r));
+  } else if (statCardFilter) {
+    list = list.filter(r => r.status === statCardFilter);
+  } else {
+    if (filterStatus !== 'all') list = list.filter(r => r.status === filterStatus);
+  }
+  if (filterAssignee !== 'all') list = list.filter(r => r.assignee == filterAssignee);
+  return list;
+}
+
+function renderRequests() {
+  const base = getBaseRequests();
+  const cntNew = base.filter(r=>r.status==='Новая').length;
+  const cntProg = base.filter(r=>r.status==='В работе').length;
+  const cntDone = base.filter(r=>r.status==='Выполнена').length;
+  const cntOver = base.filter(r=>isOverdue(r)).length;
+
+  // Stats
+  const stats = document.getElementById('statsRow');
+  const mkCard = (cls, colorClass, num, label, hint, filterKey) => {
+    const active = statCardFilter === filterKey ? ' active-filter ' + colorClass : '';
+    return `<div class="stat-card ${cls}${active}" onclick="clickStatCard('${filterKey}')">
+      <div class="stat-num">${num}</div>
+      <div class="stat-label">${label}</div>
+      <div class="stat-hint">${hint}</div>
+    </div>`;
+  };
+  stats.innerHTML =
+    mkCard('stat-new','',''+cntNew,'Новые','Нажмите для фильтра','Новая') +
+    mkCard('stat-prog','prog',''+cntProg,'В работе','Нажмите для фильтра','В работе') +
+    mkCard('stat-done','done',''+cntDone,'Выполнено','Нажмите для фильтра','Выполнена') +
+    mkCard('stat-over','over',''+cntOver,'Просрочено','Нажмите для фильтра','overdue');
+
+  // Active filter bar
+  const bar = document.getElementById('activeFilterBar');
+  if (statCardFilter) {
+    const labels = { 'Новая':'Новые', 'В работе':'В работе', 'Выполнена':'Выполнено', 'overdue':'Просрочено' };
+    bar.style.display = 'flex';
+    bar.innerHTML = `<div class="active-filter-bar">Фильтр: <b>${labels[statCardFilter]}</b> — показано ${getFilteredRequests().length} заявок <button class="clear-filter-btn" onclick="clickStatCard('${statCardFilter}')">✕ Снять</button></div>`;
+  } else {
+    bar.style.display = 'none';
+    bar.innerHTML = '';
+  }
+
+  // New request button
+  document.getElementById('btnNewRequest').style.display =
+    (currentUser.role==='owner' || currentUser.role==='secretary') ? '' : 'none';
+
+  // Filters row
+  const filters = document.getElementById('filtersRow');
+  let fhtml = '';
+  if (!statCardFilter) {
+    fhtml = `
+      <button class="filter-btn ${filterStatus==='all'?'active':''}" onclick="setFilter('all')">Все</button>
+      <button class="filter-btn ${filterStatus==='Новая'?'active':''}" onclick="setFilter('Новая')">Новые</button>
+      <button class="filter-btn ${filterStatus==='В работе'?'active':''}" onclick="setFilter('В работе')">В работе</button>
+      <button class="filter-btn ${filterStatus==='Выполнена'?'active':''}" onclick="setFilter('Выполнена')">Выполнено</button>
+    `;
+  }
+  if (currentUser.role === 'owner' || currentUser.role === 'secretary') {
+    const workers = DB.users.filter(u => u.role==='worker');
+    fhtml += `<select class="filter-select" onchange="setFilterAssignee(this.value)">
+      <option value="all">Все исполнители</option>
+      ${workers.map(w=>`<option value="${w.id}" ${filterAssignee==w.id?'selected':''}>${w.name}</option>`).join('')}
+    </select>`;
+  }
+  filters.innerHTML = fhtml;
+
+  document.getElementById('tableHead').innerHTML = `<th>#</th><th>Жилец</th><th>Адрес</th><th>Тип</th><th>Исполнитель</th><th>Подана</th><th>Принята</th><th>Срок</th><th>Статус</th><th>Действия</th>`;
+  const tbody = document.getElementById('requestsBody');
+  const list = getFilteredRequests();
+  if (!list.length) {
+    tbody.innerHTML = `<tr><td colspan="10"><div class="empty"><div class="empty-icon">📭</div><div class="empty-text">Заявок нет</div></div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = list.map(r => {
+    const worker = DB.users.find(u => u.id === r.assignee);
+    const over = isOverdue(r);
+    const statusBadge = r.status==='Новая'
+      ? `<span class="badge badge-new">● Новая</span>`
+      : r.status==='В работе'
+      ? `<span class="badge badge-inprog">● В работе</span>`
+      : `<span class="badge badge-done">✓ Выполнена</span>${r.closedBy ? `<div style="font-size:10px;color:var(--muted);margin-top:3px">${r.closedBy}</div>` : ''}`;
+    const deadlineBadge = over
+      ? `<span style="color:var(--danger);font-weight:600">${r.deadline} ⚠</span>`
+      : `<span>${r.deadline||'—'}</span>`;
+    const addrLine = r.street ? `${r.street}, д.${r.house}` : (r.address||'—');
+    const subLine = [r.entrance?`Подъезд ${r.entrance}`:'', r.floor?`эт.${r.floor}`:'', r.apart?`кв.${r.apart}`:''].filter(Boolean).join(', ');
+    const descLine = r.desc ? `<div style="font-size:11px;color:var(--muted);margin-top:3px;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${r.desc}">💬 ${r.desc}</div>` : '';
+    let actions = '';
+    if (currentUser.role==='owner' || currentUser.role==='secretary')
+      actions += `<button class="action-btn" onclick="editRequest(${r.id})">✏ Изм.</button>`;
+    if (currentUser.role==='worker' && r.status!=='Выполнена') {
+      if (r.status==='Новая') actions += `<button class="action-btn" onclick="quickStatus(${r.id},'В работе')">▶ Начать</button>`;
+      if (r.status==='В работе') actions += `<button class="action-btn" onclick="quickStatus(${r.id},'Выполнена')">✓ Готово</button>`;
+    }
+    if (currentUser.role==='owner')
+      actions += `<button class="action-btn danger" onclick="deleteRequest(${r.id})">✕</button>`;
+    return `<tr class="${over?'overdue-row':''}">
+      <td style="color:var(--muted);font-size:12px">#${r.id}</td>
+      <td><div style="font-weight:500">${r.name}</div><div style="font-size:11px;color:var(--muted)">${r.phone}</div></td>
+      <td><div>${addrLine}</div><div style="font-size:11px;color:var(--muted)">${subLine}</div></td>
+      <td><span class="type-badge">${getTypeIcon(r.type)||''} ${r.type}</span>${descLine}</td>
+      <td>${worker?worker.name:'—'}</td>
+      <td style="font-size:11px;color:var(--muted)">${r.created||'—'}</td>
+      <td style="font-size:11px;color:var(--muted)">${r.startedAt||'—'}</td>
+      <td>${deadlineBadge}</td>
+      <td>${statusBadge}</td>
+      <td>${actions}</td>
+    </tr>`;
+  }).join('');
+
+  // Mobile cards
+  const cards = document.getElementById('requestCards');
+  cards.innerHTML = list.map(r => {
+    const worker = DB.users.find(u => u.id === r.assignee);
+    const over = isOverdue(r);
+    const addrLine = r.street ? `${r.street}, д.${r.house}` : (r.address||'—');
+    const subLine = [r.entrance?`Подъезд ${r.entrance}`:'', r.floor?`эт.${r.floor}`:'', r.apart?`кв.${r.apart}`:''].filter(Boolean).join(' · ');
+    const statusBadge = r.status==='Новая'
+      ? `<span class="badge badge-new">● Новая</span>`
+      : r.status==='В работе'
+      ? `<span class="badge badge-inprog">● В работе</span>`
+      : `<span class="badge badge-done">✓ Выполнена${r.closedBy?' ('+r.closedBy+')':''}</span>`;
+    let actions = '';
+    if (currentUser.role==='owner' || currentUser.role==='secretary')
+      actions += `<button class="action-btn" style="flex:1;text-align:center;padding:8px" onclick="editRequest(${r.id})">✏ Изменить</button>`;
+    if (currentUser.role==='worker' && r.status!=='Выполнена') {
+      if (r.status==='Новая') actions += `<button class="action-btn" style="flex:1;text-align:center;padding:8px" onclick="quickStatus(${r.id},'В работе')">▶ Начать</button>`;
+      if (r.status==='В работе') actions += `<button class="action-btn" style="flex:1;text-align:center;padding:8px" onclick="quickStatus(${r.id},'Выполнена')">✓ Выполнено</button>`;
+    }
+    if (currentUser.role==='owner')
+      actions += `<button class="action-btn danger" style="padding:8px" onclick="deleteRequest(${r.id})">✕</button>`;
+    return `<div class="request-card ${over?'overdue':''}">
+      <div class="rc-top">
+        <div><div class="rc-name">${r.name}</div><div style="font-size:11px;color:var(--muted)">${r.phone||''}</div></div>
+        <div style="text-align:right"><div class="rc-id">#${r.id}</div><div style="margin-top:4px">${statusBadge}</div></div>
+      </div>
+      <div class="rc-addr">${addrLine}${subLine?' · '+subLine:''}</div>
+      ${r.desc?`<div class="rc-desc">💬 ${r.desc}</div>`:''}
+      <div class="rc-meta">
+        <span class="type-badge">${getTypeIcon(r.type)} ${r.type}</span>
+        ${worker?`<span style="font-size:12px;color:var(--muted)">${worker.name}</span>`:'<span style="font-size:12px;color:var(--warn)">Не назначен</span>'}
+      </div>
+      <div style="font-size:11px;color:${over?'var(--danger)':'var(--muted)'};margin-bottom:${actions?'8px':'0'}">
+        Подана: ${r.created||'—'}${r.startedAt?' · Принята: '+r.startedAt:''} · Срок: ${r.deadline||'—'}${over?' ⚠':''}
+      </div>
+      ${actions?`<div style="display:flex;gap:8px;flex-wrap:wrap">${actions}</div>`:''}
+    </div>`;
+  }).join('');
+}
+
+function nowDT() {
+  const d = new Date();
+  return d.toLocaleDateString('ru-RU') + ' ' + d.toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit'});
+}
+function setFilter(s) { filterStatus = s; statCardFilter = null; renderRequests(); }
+function setFilterAssignee(v) { filterAssignee = v; renderRequests(); }
+function quickStatus(id, status) {
+  const r = DB.requests.find(r=>r.id===id);
+  if (!r) return;
+  r.status = status;
+  if (status === 'В работе') {
+    if (!r.startedAt) r.startedAt = nowDT();
+    if (!r.assignee && currentUser.role === 'worker') r.assignee = currentUser.id;
+  }
+  if (status === 'Выполнена') {
+    if (!r.doneAt) r.doneAt = nowDT();
+    const roleLabel = { owner: 'Владелец', secretary: 'Секретарь', worker: currentUser.name };
+    r.closedBy = roleLabel[currentUser.role] || currentUser.name;
+  }
+  saveData(); renderRequests(); showToast('Статус обновлён','success');
+}
+function deleteRequest(id) {
+  if (!confirm('Удалить заявку?')) return;
+  DB.requests = DB.requests.filter(r=>r.id!==id);
+  saveData(); renderRequests(); showToast('Заявка удалена');
+}
+
+// ========== REQUEST MODAL ==========
+function openNewRequest() {
+  editingRequestId = null;
+  document.getElementById('modalTitle').textContent = 'Новая заявка';
+  ['fName','fPhone','fEntrance','fFloor','fApart','fDesc'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('fStatus').value = 'Новая';
+  const today = new Date();
+  document.getElementById('fCreated').value = nowDT();
+  fillWorkTypeSelect('');
+  fillStreetSelect('');
+  updateAutoDeadline();
+  updateAssigneeByType();
+  document.getElementById('requestModal').classList.add('open');
+}
+
+function editRequest(id) {
+  const r = DB.requests.find(r=>r.id===id);
+  if (!r) return;
+  editingRequestId = id;
+  document.getElementById('modalTitle').textContent = 'Редактировать заявку #'+id;
+  document.getElementById('fName').value = r.name;
+  document.getElementById('fPhone').value = r.phone;
+  document.getElementById('fEntrance').value = r.entrance || '';
+  document.getElementById('fFloor').value = r.floor || '';
+  document.getElementById('fApart').value = r.apart || '';
+  document.getElementById('fDesc').value = r.desc;
+  document.getElementById('fCreated').value = r.created || '';
+  document.getElementById('fDeadline').value = r.deadline || '';
+  document.getElementById('fStatus').value = r.status;
+  const startRow = document.getElementById('fStartedAtRow');
+  if (r.startedAt) { startRow.style.display=''; document.getElementById('fStartedAt').value = r.startedAt; }
+  else { startRow.style.display='none'; }
+  fillWorkTypeSelect(r.type);
+  fillStreetSelect(r.street || r.address || '');
+  // set house after street is filled
+  setTimeout(() => {
+    document.getElementById('fHouse').value = r.house || '';
+  }, 50);
+  updateAssigneeByType(r.assignee);
+  document.getElementById('requestModal').classList.add('open');
+}
+
+function updateAssigneeByType(selectedId) {
+  const type = document.getElementById('fType').value;
+  const sel = document.getElementById('fAssignee');
+  const assigned = DB.categoryAssignments[type] || [];
+  const workers = DB.users.filter(u => u.role==='worker');
+  // Show assigned workers first, then others
+  const inCat = workers.filter(w => assigned.includes(w.id));
+  const outCat = workers.filter(w => !assigned.includes(w.id));
+  let html = `<option value="">— Не назначен —</option>`;
+  if (inCat.length) {
+    html += `<optgroup label="Для этой категории">`;
+    html += inCat.map(w=>`<option value="${w.id}" ${w.id===selectedId?'selected':''}>${w.name} (${w.specialty})</option>`).join('');
+    html += `</optgroup>`;
+  }
+  if (outCat.length) {
+    html += `<optgroup label="Другие исполнители">`;
+    html += outCat.map(w=>`<option value="${w.id}" ${w.id===selectedId?'selected':''}>${w.name} (${w.specialty})</option>`).join('');
+    html += `</optgroup>`;
+  }
+  sel.innerHTML = html;
+}
+
+function saveRequest() {
+  const name = document.getElementById('fName').value.trim();
+  const phone = document.getElementById('fPhone').value.trim();
+  const street = document.getElementById('fStreet').value.trim();
+  const house = document.getElementById('fHouse').value.trim();
+  const data = {
+    name, phone, street, house,
+    entrance: document.getElementById('fEntrance').value.trim(),
+    floor: document.getElementById('fFloor').value.trim(),
+    apart: document.getElementById('fApart').value.trim(),
+    type: document.getElementById('fType').value,
+    desc: document.getElementById('fDesc').value.trim(),
+    assignee: parseInt(document.getElementById('fAssignee').value)||null,
+    deadline: document.getElementById('fDeadline').value,
+    status: document.getElementById('fStatus').value,
+  };
+  if (editingRequestId) {
+    const r = DB.requests.find(r=>r.id===editingRequestId);
+    data.created = r.created;
+    data.startedAt = r.startedAt || null;
+    data.doneAt = r.doneAt || null;
+    data.closedBy = r.closedBy || null;
+    // Если статус меняется на Выполнена — фиксируем кто закрыл
+    if (data.status === 'Выполнена' && r.status !== 'Выполнена') {
+      data.doneAt = nowDT();
+      const roleLabel = { owner: 'Владелец', secretary: 'Секретарь', worker: currentUser.name };
+      data.closedBy = roleLabel[currentUser.role] || currentUser.name;
+    }
+    // Если статус сняли с Выполнена — сбрасываем
+    if (data.status !== 'Выполнена') { data.closedBy = null; data.doneAt = null; }
+    Object.assign(r, data);
+    showToast('Заявка обновлена','success');
+  } else {
+    data.id = DB.nextId.request++;
+    data.created = nowDT();
+    const days = getTypeDays(data.type);
+    const dl = new Date(); dl.setDate(dl.getDate() + days);
+    data.deadline = dl.toISOString().slice(0,10);
+    data.startedAt = null;
+    data.doneAt = null;
+    DB.requests.unshift(data);
+    // Уведомление назначенному исполнителю
+    if (data.assignee && window._sendPushToUser) {
+      console.log('Sending push to user:', data.assignee);
+      window._sendPushToUser(data.assignee, '🔧 Новая заявка', `${data.type} — ${data.street||''}, д.${data.house||''}. ${data.desc||''}`);
+    } else {
+      console.log('No push: assignee=', data.assignee, 'sendPush=', !!window._sendPushToUser);
+    }
+    showToast('Заявка создана','success');
+  }
+  saveData(); closeModal('requestModal'); renderRequests();
+}
+
+// ========== STAFF ==========
+function renderStaff() {
+  const grid = document.getElementById('staffGrid');
+  const workers = DB.users.filter(u=>u.role!=='owner');
+  if (!workers.length) { grid.innerHTML='<div class="empty"><div class="empty-icon">👤</div><div class="empty-text">Сотрудников нет</div></div>'; return; }
+  grid.innerHTML = workers.map(w => {
+    const initials = w.name.split(' ').map(p=>p[0]).join('').slice(0,2).toUpperCase();
+    const active = DB.requests.filter(r=>r.assignee===w.id&&r.status!=='Выполнена').length;
+    const cats = getWorkTypes().filter(t=>(DB.categoryAssignments[t]||[]).includes(w.id));
+    return `<div class="staff-card">
+      <div class="staff-avatar">${initials}</div>
+      <div class="staff-name">${w.name}</div>
+      <div class="staff-role">${w.specialty} · ${w.role==='secretary'?'Секретарь':'Исполнитель'}</div>
+      <div class="staff-login">@${w.login}</div>
+      <div class="staff-cats">${cats.map(c=>`<span class="cat-tag">${getTypeIcon(c)} ${c}</span>`).join('')}</div>
+      <div style="margin-top:10px;font-size:12px;color:var(--muted)">Активных: <b style="color:var(--text)">${active}</b></div>
+      <div class="staff-actions">
+        <button class="action-btn" onclick="editStaff(${w.id})">✏ Изм.</button>
+        <button class="action-btn danger" onclick="deleteStaff(${w.id})">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openNewStaff() {
+  editingStaffId = null;
+  document.getElementById('staffModalTitle').textContent = 'Новый сотрудник';
+  ['sfName','sfRole','sfLogin','sfPass'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('staffModal').classList.add('open');
+}
+function editStaff(id) {
+  const u = DB.users.find(u=>u.id===id); if (!u) return;
+  editingStaffId = id;
+  document.getElementById('staffModalTitle').textContent = 'Редактировать сотрудника';
+  document.getElementById('sfName').value = u.name;
+  document.getElementById('sfRole').value = u.specialty;
+  document.getElementById('sfLogin').value = u.login;
+  document.getElementById('sfPass').value = u.pass;
+  document.getElementById('staffModal').classList.add('open');
+}
+function saveStaff() {
+  const name=document.getElementById('sfName').value.trim();
+  const specialty=document.getElementById('sfRole').value.trim();
+  const login=document.getElementById('sfLogin').value.trim();
+  const pass=document.getElementById('sfPass').value.trim();
+  if (!name||!login||!pass) { showToast('Заполните все поля','error'); return; }
+  if (!editingStaffId && DB.users.find(u=>u.login===login)) { showToast('Логин уже занят','error'); return; }
+  if (editingStaffId) {
+    const u=DB.users.find(u=>u.id===editingStaffId);
+    u.name=name; u.specialty=specialty; u.login=login; u.pass=pass;
+    showToast('Данные обновлены','success');
+  } else {
+    DB.users.push({id:DB.nextId.user++,name,login,pass,role:'worker',specialty});
+    showToast('Сотрудник добавлен','success');
+  }
+  saveData(); closeModal('staffModal'); renderStaff();
+}
+function deleteStaff(id) {
+  if (!confirm('Удалить сотрудника?')) return;
+  DB.users = DB.users.filter(u=>u.id!==id);
+  DB.requests.forEach(r=>{if(r.assignee===id)r.assignee=null;});
+  WORK_TYPES.forEach(t=>{
+    if (DB.categoryAssignments[t]) DB.categoryAssignments[t]=DB.categoryAssignments[t].filter(uid=>uid!==id);
+  });
+  saveData(); renderStaff(); showToast('Сотрудник удалён');
+}
+
+// ========== CATEGORIES ==========
+function renderCategories() {
+  const workers = DB.users.filter(u=>u.role==='worker');
+  const content = document.getElementById('categoriesContent');
+  if (!workers.length) {
+    content.innerHTML = '<div class="empty"><div class="empty-icon">👷</div><div class="empty-text">Добавьте сотрудников во вкладке «Сотрудники»</div></div>';
+    return;
+  }
+  content.innerHTML = getWorkTypes().map(type => {
+    const assigned = DB.categoryAssignments[type] || [];
+    const chips = workers.map(w => {
+      const isAssigned = assigned.includes(w.id);
+      return `<div class="cat-worker-chip ${isAssigned?'assigned':''}" onclick="toggleCategoryWorker('${type}',${w.id})">
+        ${isAssigned ? '✓' : '+'} ${w.name}
+        <span style="font-size:10px;color:var(--muted)">(${w.specialty})</span>
+      </div>`;
+    }).join('');
+    return `<div class="cat-section">
+      <div class="cat-section-title">${getTypeIcon(type)} ${type} <span style="font-size:11px;font-weight:400;color:var(--muted)">${assigned.length} чел.</span></div>
+      <div class="cat-workers-list">${chips}</div>
+    </div>`;
+  }).join('');
+}
+
+function toggleCategoryWorker(type, workerId) {
+  if (!DB.categoryAssignments[type]) DB.categoryAssignments[type] = [];
+  const arr = DB.categoryAssignments[type];
+  const idx = arr.indexOf(workerId);
+  if (idx === -1) arr.push(workerId); else arr.splice(idx, 1);
+  saveData(); renderCategories();
+  showToast('Список обновлён','success');
+}
+
+// ========== SETTINGS ==========
+let editingAddressId = null;
+let editingWorkTypeId = null;
+
+function renderSettings() {
+  // Addresses
+  const ab = document.getElementById('addressesBody');
+  const addrs = DB.addresses || [];
+  ab.innerHTML = addrs.length ? addrs.map(a => `<tr>
+    <td>${a.street}</td><td>${a.house}</td>
+    <td><button class="action-btn" onclick="editAddress(${a.id})">✏</button>
+    <button class="action-btn danger" onclick="deleteAddress(${a.id})">✕</button></td>
+  </tr>`).join('') : `<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:20px">Нет адресов</td></tr>`;
+
+  // Work types
+  const wb = document.getElementById('workTypesBody');
+  const wts = DB.workTypes || [];
+  wb.innerHTML = wts.length ? wts.map(w => `<tr>
+    <td>${w.name}</td><td style="font-size:18px">${w.icon}</td><td>${w.days} дн.</td>
+    <td><button class="action-btn" onclick="editWorkType(${w.id})">✏</button>
+    <button class="action-btn danger" onclick="deleteWorkType(${w.id})">✕</button></td>
+  </tr>`).join('') : `<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:20px">Нет типов работ</td></tr>`;
+}
+
+function openAddAddress() {
+  editingAddressId = null;
+  document.getElementById('addressModalTitle').textContent = 'Новый адрес';
+  document.getElementById('aStreet').value = '';
+  document.getElementById('aHouse').value = '';
+  document.getElementById('addressModal').classList.add('open');
+}
+function editAddress(id) {
+  const a = (DB.addresses||[]).find(a=>a.id===id); if (!a) return;
+  editingAddressId = id;
+  document.getElementById('addressModalTitle').textContent = 'Редактировать адрес';
+  document.getElementById('aStreet').value = a.street;
+  document.getElementById('aHouse').value = a.house;
+  document.getElementById('addressModal').classList.add('open');
+}
+function saveAddress() {
+  const street = document.getElementById('aStreet').value.trim();
+  const house = document.getElementById('aHouse').value.trim();
+  if (!street||!house) { showToast('Заполните улицу и дом','error'); return; }
+  if (!DB.addresses) DB.addresses = [];
+  if (!DB.nextId.address) DB.nextId.address = Date.now();
+  if (editingAddressId) {
+    const a = DB.addresses.find(a=>a.id===editingAddressId);
+    a.street = street; a.house = house;
+  } else {
+    DB.addresses.push({ id: DB.nextId.address++, street, house });
+  }
+  saveData(); closeModal('addressModal'); renderSettings(); showToast('Адрес сохранён','success');
+}
+function deleteAddress(id) {
+  if (!confirm('Удалить адрес?')) return;
+  DB.addresses = (DB.addresses||[]).filter(a=>a.id!==id);
+  saveData(); renderSettings(); showToast('Адрес удалён');
+}
+
+function openAddWorkType() {
+  editingWorkTypeId = null;
+  document.getElementById('workTypeModalTitle').textContent = 'Новый тип работы';
+  document.getElementById('wtName').value = '';
+  document.getElementById('wtIcon').value = '📋';
+  document.getElementById('wtDays').value = '1';
+  document.getElementById('workTypeModal').classList.add('open');
+}
+function editWorkType(id) {
+  const w = (DB.workTypes||[]).find(w=>w.id===id); if (!w) return;
+  editingWorkTypeId = id;
+  document.getElementById('workTypeModalTitle').textContent = 'Редактировать тип работы';
+  document.getElementById('wtName').value = w.name;
+  document.getElementById('wtIcon').value = w.icon;
+  document.getElementById('wtDays').value = w.days;
+  document.getElementById('workTypeModal').classList.add('open');
+}
+function saveWorkType() {
+  const name = document.getElementById('wtName').value.trim();
+  const icon = document.getElementById('wtIcon').value.trim() || '📋';
+  const days = parseInt(document.getElementById('wtDays').value) || 1;
+  if (!name) { showToast('Введите название','error'); return; }
+  if (!DB.workTypes) DB.workTypes = [];
+  if (!DB.nextId.workType) DB.nextId.workType = Date.now();
+  if (editingWorkTypeId) {
+    const w = DB.workTypes.find(w=>w.id===editingWorkTypeId);
+    w.name = name; w.icon = icon; w.days = days;
+  } else {
+    DB.workTypes.push({ id: DB.nextId.workType++, name, icon, days });
+  }
+  saveData(); closeModal('workTypeModal'); renderSettings(); showToast('Тип работы сохранён','success');
+}
+function deleteWorkType(id) {
+  if (!confirm('Удалить тип работы?')) return;
+  DB.workTypes = (DB.workTypes||[]).filter(w=>w.id!==id);
+  saveData(); renderSettings(); showToast('Удалено');
+}
+
+function fillWorkTypeSelect(selectedName) {
+  const sel = document.getElementById('fType');
+  sel.innerHTML = (DB.workTypes||[]).map(w =>
+    `<option value="${w.name}" ${w.name===selectedName?'selected':''}>${w.icon} ${w.name}</option>`
+  ).join('');
+}
+
+function fillStreetSelect(selectedStreet) {
+  const sel = document.getElementById('fStreet');
+  const streets = [...new Set((DB.addresses||[]).map(a=>a.street))];
+  sel.innerHTML = `<option value="">— Выберите улицу —</option>` +
+    streets.map(s=>`<option value="${s}" ${s===selectedStreet?'selected':''}>${s}</option>`).join('');
+  updateHouseList(selectedStreet);
+}
+
+function updateHouseList(preselect) {
+  const street = document.getElementById('fStreet').value;
+  const sel = document.getElementById('fHouse');
+  const houses = (DB.addresses||[]).filter(a=>a.street===street).map(a=>a.house);
+  sel.innerHTML = `<option value="">— Дом —</option>` +
+    houses.map(h=>`<option value="${h}" ${h===preselect?'selected':''}>${h}</option>`).join('');
+}
+
+function updateAutoDeadline() {
+  const type = document.getElementById('fType').value;
+  const days = getTypeDays(type);
+  const d = new Date(); d.setDate(d.getDate() + days);
+  document.getElementById('fDeadline').value = d.toISOString().slice(0,10);
+}
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function togglePass() {
+  const inp = document.getElementById('sfPass');
+  const btn = document.getElementById('passToggleBtn');
+  if (inp.type === 'password') { inp.type = 'text'; btn.textContent = '🙈'; }
+  else { inp.type = 'password'; btn.textContent = '👁'; }
+}
+document.querySelectorAll('.modal-overlay').forEach(m => {
+  m.addEventListener('click', e => { if (e.target===m) m.classList.remove('open'); });
+});
+let toastTimer;
+function showToast(msg, type='') {
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.className='toast show '+type;
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>{t.className='toast';},2500);
+}
+window._showToast = showToast;
+
+// ========== PWA INSTALL ==========
+let _deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  _deferredPrompt = e;
+  document.getElementById('installBanner').classList.add('show');
+});
+document.getElementById('installBtn').addEventListener('click', async () => {
+  if (_deferredPrompt) {
+    _deferredPrompt.prompt();
+    const result = await _deferredPrompt.userChoice;
+    _deferredPrompt = null;
+    document.getElementById('installBanner').classList.remove('show');
+  }
+});
+// iOS hint
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.navigator.standalone;
+if (isIOS) {
+  const banner = document.getElementById('installBanner');
+  const text = banner.querySelector('.install-banner-text');
+  text.innerHTML = 'Добавьте <b>CRM Sirius</b> на экран: нажмите <b>⬆ Поделиться</b> → <b>На экран «Домой»</b>';
+  document.getElementById('installBtn').style.display = 'none';
+  banner.classList.add('show');
+}
+
+// ========== FIREBASE INIT ==========
+document.addEventListener('firebaseReady', () => { initDB(); });
+// Fallback: if module already fired before listener was ready
+setTimeout(() => { if (window._fbInit && !_fbListening) initDB(); }, 500);
+</script>
+</body>
+</html>
