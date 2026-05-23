@@ -73,19 +73,20 @@
     try {
       const ONESIGNAL_APP_ID = "21e63862-1934-4bd1-9e55-1b67fb38c87d";
       const ONESIGNAL_API_KEY = "os_v2_app_ehtdqyqzgrf5dhsvdnt7wogipvzmjbrshsxussfhjwq6r4bjm7k5suy5baslea6lm63zuh7dq3khchsk72ihnftne7t3rhzjoznjrzy";
-      await fetch("https://corsproxy.io/?" + encodeURIComponent("https://api.onesignal.com/notifications?c=push"), {
+      const payload = {
+        app_id: ONESIGNAL_APP_ID,
+        target_channel: "push",
+        include_aliases: { external_id: [String(userId)] },
+        headings: { en: title, ru: title },
+        contents: { en: body, ru: body },
+      };
+      await fetch("https://api.allorigins.win/raw?url=" + encodeURIComponent("https://api.onesignal.com/notifications?c=push"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Authorization": "Key " + ONESIGNAL_API_KEY
         },
-        body: JSON.stringify({
-          app_id: ONESIGNAL_APP_ID,
-          target_channel: "push",
-          include_aliases: { external_id: [String(userId)] },
-          headings: { en: title, ru: title },
-          contents: { en: body, ru: body },
-        })
+        body: JSON.stringify(payload)
       });
     } catch(e) { console.warn('Push send error:', e); }
   };
