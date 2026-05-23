@@ -283,7 +283,24 @@
   .toast.success { border-color: var(--done); }
   .toast.error { border-color: var(--danger); }
 
-  /* MOBILE CARDS */
+  .monitor-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px;
+  }
+  .monitor-card.has-work { border-color: var(--inprog); }
+  .monitor-card.free { border-color: var(--done); }
+  .monitor-header { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .monitor-avatar { width: 44px; height: 44px; border-radius: 50%; background: rgba(79,124,255,0.15); display: flex; align-items: center; justify-content: center; font-family: 'Unbounded',sans-serif; font-size: 16px; color: var(--accent); font-weight: 700; flex-shrink: 0; }
+  .monitor-name { font-weight: 600; font-size: 14px; }
+  .monitor-role { font-size: 12px; color: var(--muted); }
+  .monitor-status { margin-left: auto; font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 20px; }
+  .monitor-status.busy { background: rgba(245,166,35,0.15); color: var(--inprog); }
+  .monitor-status.free { background: rgba(0,212,170,0.15); color: var(--done); }
+  .monitor-task { background: var(--surface2); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; border-left: 3px solid var(--inprog); }
+  .monitor-task-addr { font-size: 13px; font-weight: 500; margin-bottom: 4px; }
+  .monitor-task-type { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+  .monitor-task-time { font-size: 11px; color: var(--inprog); font-weight: 600; }
+  .monitor-task-overdue { border-left-color: var(--danger); }
+  .monitor-task-time.overdue { color: var(--danger); }
   .request-cards { display: none; flex-direction: column; gap: 10px; }
   .request-card {
     background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px;
@@ -374,6 +391,15 @@
         <div style="font-size:12px;color:var(--muted)">Нажмите на имя, чтобы назначить/снять</div>
       </div>
       <div id="categoriesContent"></div>
+    </div>
+
+    <!-- МОНИТОРИНГ СОТРУДНИКОВ -->
+    <div class="tab-pane" id="tab-monitor">
+      <div class="section-header">
+        <div class="section-title">👷 Сотрудники — текущие задачи</div>
+        <div style="font-size:12px;color:var(--muted)" id="monitorUpdated"></div>
+      </div>
+      <div id="monitorGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px"></div>
     </div>
 
     <!-- ИСТОРИЯ ПО КВАРТИРЕ -->
@@ -659,6 +685,7 @@ function startLiveSync() {
         if (id==='staff') renderStaff();
         if (id==='categories') renderCategories();
         if (id==='settings') renderSettings();
+        if (id==='monitor') renderMonitor();
       }
     }
   });
@@ -723,6 +750,7 @@ function buildNav() {
   nav.innerHTML = '';
   const tabs = [{ id:'requests', label:'Заявки' }];
   if (currentUser.role === 'owner' || currentUser.role === 'secretary') {
+    tabs.push({ id:'monitor', label:'👷 Онлайн' });
     tabs.push({ id:'history', label:'📋 История' });
   }
   if (currentUser.role === 'owner') {
@@ -751,6 +779,7 @@ function switchTab(id) {
   if (id==='categories') renderCategories();
   if (id==='settings') renderSettings();
   if (id==='history') initHistoryTab();
+  if (id==='monitor') { renderMonitor(); startMonitorTimer(); }
 }
 
 // ========== STATS CARD FILTER ==========
@@ -1313,6 +1342,87 @@ function updateAutoDeadline() {
   const d = new Date(); d.setDate(d.getDate() + days);
   document.getElementById('fDeadline').value = d.toISOString().slice(0,10);
 }
+// ========== MONITOR ==========
+let _monitorTimer = null;
+
+function startMonitorTimer() {
+  clearInterval(_monitorTimer);
+  _monitorTimer = setInterval(() => {
+    const activeTab = document.querySelector('.tab-pane.active');
+    if (activeTab && activeTab.id === 'tab-monitor') renderMonitor();
+    else clearInterval(_monitorTimer);
+  }, 30000); // update every 30 seconds
+}
+
+function timeSince(dtStr) {
+  if (!dtStr) return null;
+  // Parse "DD.MM.YYYY HH:MM" format
+  let dt;
+  if (dtStr.includes('.')) {
+    const [date, time] = dtStr.split(' ');
+    if (!date || !time) return null;
+    const [d, m, y] = date.split('.');
+    dt = new Date(`${y}-${m}-${d}T${time}:00`);
+  } else {
+    dt = new Date(dtStr);
+  }
+  if (isNaN(dt)) return null;
+  const mins = Math.floor((Date.now() - dt.getTime()) / 60000);
+  if (mins < 60) return `${mins} мин.`;
+  const hrs = Math.floor(mins / 60);
+  const rem = mins % 60;
+  if (hrs < 24) return `${hrs} ч. ${rem} мин.`;
+  return `${Math.floor(hrs/24)} дн. ${hrs%24} ч.`;
+}
+
+function renderMonitor() {
+  const workers = DB.users.filter(u => u.role === 'worker');
+  const grid = document.getElementById('monitorGrid');
+  const updated = document.getElementById('monitorUpdated');
+  if (updated) updated.textContent = 'Обновлено: ' + new Date().toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit'});
+
+  if (!workers.length) {
+    grid.innerHTML = '<div class="empty"><div class="empty-icon">👷</div><div class="empty-text">Нет исполнителей</div></div>';
+    return;
+  }
+
+  grid.innerHTML = workers.map(w => {
+    const initials = w.name.split(' ').map(p=>p[0]).join('').slice(0,2).toUpperCase();
+    const activeTasks = DB.requests.filter(r => r.assignee === w.id && r.status === 'В работе');
+    const newTasks = DB.requests.filter(r => r.assignee === w.id && r.status === 'Новая');
+    const isBusy = activeTasks.length > 0;
+
+    const tasksHtml = activeTasks.map(r => {
+      const addr = r.street ? `${r.street}, д.${r.house}${r.apart?' кв.'+r.apart:''}` : (r.address||'—');
+      const elapsed = timeSince(r.startedAt);
+      const over = isOverdue(r);
+      return `<div class="monitor-task ${over?'monitor-task-overdue':''}">
+        <div class="monitor-task-addr">📍 ${addr}</div>
+        <div class="monitor-task-type">${getTypeIcon(r.type)} ${r.type}${r.desc?' — '+r.desc.slice(0,40):''}</div>
+        ${elapsed ? `<div class="monitor-task-time ${over?'overdue':''}">⏱ В работе: ${elapsed}${over?' ⚠ Просрочено':''}</div>` : ''}
+        <div style="font-size:11px;color:var(--muted)">Срок: ${r.deadline||'—'}</div>
+      </div>`;
+    }).join('');
+
+    const newHtml = newTasks.length
+      ? `<div style="font-size:12px;color:var(--muted);margin-top:8px">Ожидают: <b style="color:var(--new)">${newTasks.length}</b> новых заявок</div>`
+      : '';
+
+    return `<div class="monitor-card ${isBusy?'has-work':'free'}">
+      <div class="monitor-header">
+        <div class="monitor-avatar">${initials}</div>
+        <div>
+          <div class="monitor-name">${w.name}</div>
+          <div class="monitor-role">${w.specialty}</div>
+        </div>
+        <div class="monitor-status ${isBusy?'busy':'free'}">${isBusy?'В работе':'Свободен'}</div>
+      </div>
+      ${isBusy ? tasksHtml : '<div style="font-size:13px;color:var(--muted);text-align:center;padding:8px">Нет активных задач</div>'}
+      ${newHtml}
+    </div>`;
+  }).join('');
+}
+
 // ========== HISTORY ==========
 function initHistoryTab() {
   const streets = [...new Set((DB.addresses||[]).map(a=>a.street))];
