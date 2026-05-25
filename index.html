@@ -988,7 +988,7 @@ function renderRequests() {
     if (currentUser.role==='owner')
       actions += `<button class="action-btn danger" onclick="deleteRequest(${r.id})">✕</button>`;
     return `<tr class="${over?'overdue-row':''}">
-      <td>${r.status!=='Выполнена'?renderPriorityCell(r):''}</td>
+      <td>${r.status!=='Выполнена'&&r.assignee?`<span style="font-size:11px;color:var(--muted)">#${getPriorityIdx(r)}</span>`:''}</td>
       <td style="color:var(--muted);font-size:12px">#${r.id}</td>
       <td><div style="font-weight:500">${r.name}</div><div style="font-size:11px;color:var(--muted)">${r.phone}</div></td>
       <td><div>${addrLine}</div><div style="font-size:11px;color:var(--muted)">${subLine}</div></td>
@@ -1046,7 +1046,7 @@ function renderRequests() {
       <div class="rc-meta">
         <span class="type-badge">${getTypeIcon(r.type)} ${r.type}</span>
         ${worker?`<span style="font-size:12px;color:var(--muted)">${worker.name}</span>`:'<span style="font-size:12px;color:var(--warn)">Не назначен</span>'}
-        ${r.status!=='Выполнена'&&r.assignee?renderPriorityCell(r):''}
+      ${r.status!=='Выполнена'&&r.assignee?`<span style="font-size:11px;color:var(--muted)">#${getPriorityIdx(r)}</span>`:''}
       </div>
       <div style="font-size:11px;color:${over?'var(--danger)':'var(--muted)'};margin-bottom:${actions?'8px':'0'}">
         Подана: ${r.created||'—'}${r.startedAt?' · Принята: '+r.startedAt:''} · Срок: ${r.deadline||'—'}${over?' ⚠':''}
@@ -1059,6 +1059,28 @@ function renderRequests() {
 function nowDT() {
   const d = new Date();
   return d.toLocaleDateString('ru-RU') + ' ' + d.toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit'});
+}
+
+function getPriorityIdx(r) {
+  if (!r.assignee) return '';
+  const tasks = DB.requests
+    .filter(x => x.assignee === r.assignee && x.status !== 'Выполнена')
+    .sort((a,b) => (a.priority||99) - (b.priority||99));
+  const idx = tasks.findIndex(x => x.id === r.id);
+  return idx >= 0 ? idx + 1 : '';
+}
+
+// Priority buttons — used in monitor expand view only
+function renderPriorityButtons(r) {
+  const assigneeTasks = DB.requests
+    .filter(x => x.assignee === r.assignee && x.status !== 'Выполнена')
+    .sort((a,b) => (a.priority||99) - (b.priority||99));
+  const idx = assigneeTasks.findIndex(x => x.id === r.id);
+  if (assigneeTasks.length <= 1) return `<span style="font-size:11px;color:var(--muted)">#1</span>`;
+  let btns = `<span style="font-size:11px;color:var(--muted);margin-right:4px">#${idx+1}</span>`;
+  if (idx > 0) btns += `<button class="action-btn" onclick="changePriority(${r.id},-1);renderMonitor();" style="padding:4px 10px;font-size:13px">↑</button>`;
+  if (idx < assigneeTasks.length-1) btns += `<button class="action-btn" onclick="changePriority(${r.id},1);renderMonitor();" style="padding:4px 10px;font-size:13px">↓</button>`;
+  return btns;
 }
 
 function renderPriorityCell(r) {
@@ -1624,12 +1646,14 @@ function renderMonitor() {
     const over = isOverdue(r);
     const borderColor = r.status==='Новая'?'var(--new)':r.status==='В работе'?'var(--inprog)':'var(--done)';
     const sb = r.status==='Новая'?`<span class="badge badge-new" style="font-size:10px">● Новая</span>`:r.status==='В работе'?`<span class="badge badge-inprog" style="font-size:10px">● В работе</span>`:`<span class="badge badge-done" style="font-size:10px">✓ Готово</span>`;
+    const canPriority = currentUser.role==='owner'||currentUser.role==='secretary'||currentUser.role==='itr';
+    const prioBtns = canPriority && r.status!=='Выполнена' ? renderPriorityButtons(r) : '';
     return `<div class="monitor-task ${over?'monitor-task-overdue':''}" style="border-left-color:${borderColor}">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start">
-        <div class="monitor-task-addr">📍 ${addr}</div>${sb}
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+        <div class="monitor-task-addr">📍 ${addr}</div>
+        <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">${prioBtns}${sb}</div>
       </div>
       <div class="monitor-task-type">${getTypeIcon(r.type)} ${r.type}${r.desc?' — '+r.desc.slice(0,50):''}</div>
-      ${r.priority?`<div style="font-size:11px;color:var(--muted)">Приоритет: <b style="color:var(--text)">#${r.priority}</b></div>`:''}
       ${elapsed&&r.status==='В работе'?`<div class="monitor-task-time ${over?'overdue':''}">⏱ В работе: ${elapsed}${over?' ⚠':''}</div>`:''}
       <div style="font-size:11px;color:var(--muted)">Срок: ${r.deadline||'—'} · #${r.id}</div>
     </div>`;
