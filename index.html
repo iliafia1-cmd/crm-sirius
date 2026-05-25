@@ -1417,6 +1417,7 @@ function timeSince(dtStr) {
 
 function renderMonitor() {
   const workers = DB.users.filter(u => u.role === 'worker' && !u.fired);
+  const grid = document.getElementById('monitorGrid');
   const updated = document.getElementById('monitorUpdated');
   if (updated) updated.textContent = 'Обновлено: ' + new Date().toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit'});
   if (!workers.length) { grid.innerHTML = '<div class="empty"><div class="empty-icon">👷</div><div class="empty-text">Нет исполнителей</div></div>'; return; }
