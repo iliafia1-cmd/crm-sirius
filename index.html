@@ -786,7 +786,7 @@ function doLogout() {
 // ========== APP INIT ==========
 function initApp() {
   const badge = document.getElementById('userBadge');
-  const roleLabel = { owner:'Владелец', secretary:'Секретарь', worker:'Исполнитель' };
+  const roleLabel = { owner:'Владелец', secretary:'Секретарь', itr:'ИТР', worker:'Исполнитель' };
   badge.innerHTML = `<span>${currentUser.name}</span> · ${roleLabel[currentUser.role]}`;
   buildNav();
   switchTab('requests');
@@ -1092,11 +1092,11 @@ function quickStatus(id, status) {
   r.status = status;
   if (status === 'В работе') {
     if (!r.startedAt) r.startedAt = nowDT();
-    if (!r.assignee && currentUser.role === 'worker') r.assignee = currentUser.id;
+    if (!r.assignee && (currentUser.role === 'worker' || currentUser.role === 'itr')) r.assignee = currentUser.id;
   }
   if (status === 'Выполнена') {
     if (!r.doneAt) r.doneAt = nowDT();
-    const roleLabel = { owner: 'Владелец', secretary: 'Секретарь', worker: currentUser.name };
+    const roleLabel = { owner: 'Владелец', secretary: 'Секретарь', itr: currentUser.name, worker: currentUser.name };
     r.closedBy = roleLabel[currentUser.role] || currentUser.name;
   }
   saveData(); renderRequests(); showToast('Статус обновлён','success');
@@ -1153,7 +1153,7 @@ function updateAssigneeByType(selectedId) {
   const type = document.getElementById('fType').value;
   const sel = document.getElementById('fAssignee');
   const assigned = DB.categoryAssignments[type] || [];
-  const workers = DB.users.filter(u => u.role==='worker' && !u.fired);
+  const workers = DB.users.filter(u => (u.role==='worker' || u.role==='itr') && !u.fired);
   const inCat = workers.filter(w => assigned.includes(w.id));
   const outCat = workers.filter(w => !assigned.includes(w.id));
   let html = `<option value="">— Не назначен —</option>`;
@@ -1195,7 +1195,7 @@ function saveRequest() {
     // Если статус меняется на Выполнена — фиксируем кто закрыл
     if (data.status === 'Выполнена' && r.status !== 'Выполнена') {
       data.doneAt = nowDT();
-      const roleLabel = { owner: 'Владелец', secretary: 'Секретарь', worker: currentUser.name };
+      const roleLabel = { owner: 'Владелец', secretary: 'Секретарь', itr: currentUser.name, worker: currentUser.name };
       data.closedBy = roleLabel[currentUser.role] || currentUser.name;
     }
     // Если статус сняли с Выполнена — сбрасываем
