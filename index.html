@@ -233,6 +233,16 @@
   .btn-save { padding: 10px 24px; border-radius: 8px; border: none; background: var(--accent); color: #fff; font-family: 'Unbounded', sans-serif; font-size: 12px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
   .btn-save:hover { opacity: 0.85; }
 
+  /* PRIORITY */
+  .priority-badge { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; font-size: 11px; font-weight: 700; font-family: 'Unbounded', sans-serif; flex-shrink: 0; }
+  .priority-1 { background: rgba(255,59,92,0.2); color: var(--danger); }
+  .priority-2 { background: rgba(245,166,35,0.2); color: var(--inprog); }
+  .priority-3 { background: rgba(79,124,255,0.2); color: var(--accent); }
+  .priority-n { background: var(--surface2); color: var(--muted); }
+  .priority-controls { display: flex; align-items: center; gap: 4px; }
+  .priority-btn { background: none; border: 1px solid var(--border); border-radius: 4px; color: var(--muted); cursor: pointer; font-size: 10px; padding: 1px 5px; line-height: 1.4; }
+  .priority-btn:hover { border-color: var(--accent); color: var(--accent); }
+
   /* STAFF */
   .staff-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
   .staff-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; transition: border-color 0.2s; }
@@ -899,7 +909,7 @@ function renderRequests() {
   }
   filters.innerHTML = fhtml;
 
-  document.getElementById('tableHead').innerHTML = `<th>#</th><th>Жилец</th><th>Адрес</th><th>Тип</th><th>Исполнитель</th><th>Подана</th><th>Принята</th><th>Срок</th><th>Статус</th><th>Действия</th>`;
+  document.getElementById('tableHead').innerHTML = `<th>№</th><th>#</th><th>Жилец</th><th>Адрес</th><th>Тип</th><th>Исполнитель</th><th>Подана</th><th>Принята</th><th>Срок</th><th>Статус</th><th>Действия</th>`;
   const tbody = document.getElementById('requestsBody');
   const list = getFilteredRequests();
   if (!list.length) {
@@ -930,6 +940,7 @@ function renderRequests() {
     if (currentUser.role==='owner')
       actions += `<button class="action-btn danger" onclick="deleteRequest(${r.id})">✕</button>`;
     return `<tr class="${over?'overdue-row':''}">
+      <td>${r.status!=='Выполнена'?renderPriorityCell(r):''}</td>
       <td style="color:var(--muted);font-size:12px">#${r.id}</td>
       <td><div style="font-weight:500">${r.name}</div><div style="font-size:11px;color:var(--muted)">${r.phone}</div></td>
       <td><div>${addrLine}</div><div style="font-size:11px;color:var(--muted)">${subLine}</div></td>
@@ -967,7 +978,11 @@ function renderRequests() {
     return `<div class="request-card ${over?'overdue':''}">
       <div class="rc-top">
         <div><div class="rc-name">${r.name}</div><div style="font-size:11px;color:var(--muted)">${r.phone||''}</div></div>
-        <div style="text-align:right"><div class="rc-id">#${r.id}</div><div style="margin-top:4px">${statusBadge}</div></div>
+        <div style="text-align:right">
+          <div class="rc-id">#${r.id}</div>
+          ${r.status!=='Выполнена'&&r.assignee?`<div style="margin-top:4px">${renderPriorityCell(r)}</div>`:''}
+          <div style="margin-top:4px">${statusBadge}</div>
+        </div>
       </div>
       <div class="rc-addr">${addrLine}${subLine?' · '+subLine:''}</div>
       ${r.desc?`<div class="rc-desc">💬 ${r.desc}</div>`:''}
@@ -1382,6 +1397,44 @@ function updateAutoDeadline() {
   const d = new Date(); d.setDate(d.getDate() + days);
   document.getElementById('fDeadline').value = d.toISOString().slice(0,10);
 }
+// ========== PRIORITY ==========
+function getAssigneePriorities(assigneeId) {
+  // Get all non-done requests for this assignee, sorted by priority
+  return DB.requests
+    .filter(r => r.assignee === assigneeId && r.status !== 'Выполнена')
+    .sort((a,b) => (a.priority||999) - (b.priority||999));
+}
+
+function renderPriorityCell(r) {
+  const canEdit = currentUser.role === 'owner' || currentUser.role === 'secretary' || currentUser.id === r.assignee;
+  const pNum = r.priority || '—';
+  const pClass = r.priority===1?'priority-1':r.priority===2?'priority-2':r.priority===3?'priority-3':'priority-n';
+  if (!canEdit || !r.assignee) return `<span class="priority-badge ${pClass}">${pNum}</span>`;
+  return `<div class="priority-controls">
+    <span class="priority-badge ${pClass}">${pNum}</span>
+    <button class="priority-btn" onclick="changePriority(${r.id},-1)" title="Повысить">▲</button>
+    <button class="priority-btn" onclick="changePriority(${r.id},1)" title="Понизить">▼</button>
+  </div>`;
+}
+
+function changePriority(requestId, direction) {
+  const r = DB.requests.find(r=>r.id===requestId);
+  if (!r || !r.assignee) return;
+  const list = getAssigneePriorities(r.assignee);
+  // Assign sequential priorities if not set
+  list.forEach((req, i) => { if (!req.priority) req.priority = i + 1; });
+  const idx = list.findIndex(req=>req.id===requestId);
+  const swapIdx = idx + direction;
+  if (swapIdx < 0 || swapIdx >= list.length) return;
+  // Swap priorities
+  const tmp = list[idx].priority;
+  list[idx].priority = list[swapIdx].priority;
+  list[swapIdx].priority = tmp;
+  saveData();
+  renderRequests();
+  showToast('Приоритет изменён', 'success');
+}
+
 // ========== MONITOR ==========
 let _monitorTimer = null;
 
@@ -1433,6 +1486,7 @@ function renderMonitor() {
         <div class="monitor-task-addr">📍 ${addr}</div>${sb}
       </div>
       <div class="monitor-task-type">${getTypeIcon(r.type)} ${r.type}${r.desc?' — '+r.desc.slice(0,50):''}</div>
+      ${r.priority?`<div style="font-size:11px;color:var(--muted)">Приоритет: <b style="color:var(--text)">#${r.priority}</b></div>`:''}
       ${elapsed&&r.status==='В работе'?`<div class="monitor-task-time ${over?'overdue':''}">⏱ В работе: ${elapsed}${over?' ⚠':''}</div>`:''}
       <div style="font-size:11px;color:var(--muted)">Срок: ${r.deadline||'—'} · #${r.id}</div>
     </div>`;
@@ -1440,8 +1494,8 @@ function renderMonitor() {
 
   grid.innerHTML = workers.map(w => {
     const initials = w.name.split(' ').map(p=>p[0]).join('').slice(0,2).toUpperCase();
-    const activeTasks = DB.requests.filter(r=>r.assignee===w.id&&r.status==='В работе');
-    const newTasks = DB.requests.filter(r=>r.assignee===w.id&&r.status==='Новая');
+    const activeTasks = DB.requests.filter(r=>r.assignee===w.id&&r.status==='В работе').sort((a,b)=>(a.priority||999)-(b.priority||999));
+    const newTasks = DB.requests.filter(r=>r.assignee===w.id&&r.status==='Новая').sort((a,b)=>(a.priority||999)-(b.priority||999));
     const doneTasks = DB.requests.filter(r=>r.assignee===w.id&&r.status==='Выполнена');
     const overdueTasks = activeTasks.filter(r=>isOverdue(r));
     const isBusy = activeTasks.length > 0;
