@@ -1017,6 +1017,15 @@ function renderRequests() {
     let actions = '';
     if (currentUser.role==='owner' || currentUser.role==='secretary')
       actions += `<button class="action-btn" style="flex:1;text-align:center;padding:8px" onclick="editRequest(${r.id})">✏ Изменить</button>`;
+    if (currentUser.role==='itr') {
+      const mySubordinates = currentUser.subordinates || [];
+      if (r.assignee === currentUser.id || mySubordinates.includes(r.assignee) || !r.assignee)
+        actions += `<button class="action-btn" style="flex:1;text-align:center;padding:8px" onclick="openReassignModal(${r.id})">↔ Назначить</button>`;
+      if (r.status!=='Выполнена') {
+        if (r.status==='Новая') actions += `<button class="action-btn" style="flex:1;text-align:center;padding:8px" onclick="quickStatus(${r.id},'В работе')">▶ Начать</button>`;
+        if (r.status==='В работе') actions += `<button class="action-btn" style="flex:1;text-align:center;padding:8px" onclick="quickStatus(${r.id},'Выполнена')">✓ Выполнено</button>`;
+      }
+    }
     if (currentUser.role==='worker' && r.status!=='Выполнена') {
       if (r.status==='Новая') actions += `<button class="action-btn" style="flex:1;text-align:center;padding:8px" onclick="quickStatus(${r.id},'В работе')">▶ Начать</button>`;
       if (r.status==='В работе') actions += `<button class="action-btn" style="flex:1;text-align:center;padding:8px" onclick="quickStatus(${r.id},'Выполнена')">✓ Выполнено</button>`;
