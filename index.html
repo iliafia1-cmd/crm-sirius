@@ -909,7 +909,7 @@ function renderRequests() {
   }
   filters.innerHTML = fhtml;
 
-  document.getElementById('tableHead').innerHTML = `<th>№</th><th>#</th><th>Жилец</th><th>Адрес</th><th>Тип</th><th>Исполнитель</th><th>Подана</th><th>Принята</th><th>Срок</th><th>Статус</th><th>Действия</th>`;
+  document.getElementById('tableHead').innerHTML = `<th>№</th><th>#</th><th>Жилец</th><th>Адрес</th><th>Тип</th><th>Исполнитель</th><th>Очередь</th><th>Подана</th><th>Принята</th><th>Срок</th><th>Статус</th><th>Действия</th>`;
   const tbody = document.getElementById('requestsBody');
   const list = getFilteredRequests();
   if (!list.length) {
@@ -1001,6 +1001,38 @@ function renderRequests() {
 function nowDT() {
   const d = new Date();
   return d.toLocaleDateString('ru-RU') + ' ' + d.toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit'});
+}
+
+function renderPriorityCell(r) {
+  if (currentUser.role !== 'owner' && currentUser.role !== 'secretary') return '';
+  const assigneeTasks = DB.requests
+    .filter(x => x.assignee === r.assignee && x.status !== 'Выполнена')
+    .sort((a,b) => (a.priority||99) - (b.priority||99));
+  const idx = assigneeTasks.findIndex(x => x.id === r.id);
+  if (assigneeTasks.length <= 1) return '';
+  let btns = '';
+  if (idx > 0) btns += `<button class="action-btn" onclick="changePriority(${r.id},-1)" style="padding:2px 6px;font-size:11px">↑</button>`;
+  if (idx < assigneeTasks.length-1) btns += `<button class="action-btn" onclick="changePriority(${r.id},1)" style="padding:2px 6px;font-size:11px">↓</button>`;
+  return `<span style="font-size:10px;color:var(--muted)">#${idx+1}</span> ${btns}`;
+}
+
+function changePriority(requestId, direction) {
+  const r = DB.requests.find(x=>x.id===requestId);
+  if (!r || !r.assignee) return;
+  const tasks = DB.requests
+    .filter(x => x.assignee === r.assignee && x.status !== 'Выполнена')
+    .sort((a,b) => (a.priority||99) - (b.priority||99));
+  const idx = tasks.findIndex(x=>x.id===requestId);
+  const swapIdx = idx + direction;
+  if (swapIdx < 0 || swapIdx >= tasks.length) return;
+  // Swap priorities
+  const tmp = tasks[idx].priority || (idx+1);
+  tasks[idx].priority = tasks[swapIdx].priority || (swapIdx+1);
+  tasks[swapIdx].priority = tmp;
+  // Re-normalize
+  tasks.sort((a,b)=>(a.priority||99)-(b.priority||99));
+  tasks.forEach((t,i) => { t.priority = i+1; });
+  saveData(); renderRequests(); showToast('Порядок изменён','success');
 }
 function setFilter(s) { filterStatus = s; statCardFilter = null; renderRequests(); }
 function setFilterAssignee(v) { filterAssignee = v; renderRequests(); }
@@ -1519,8 +1551,8 @@ function renderMonitor() {
       </div>
       <div id="mc-expand-${w.id}" style="display:none">
         <div style="border-top:1px solid var(--border);padding-top:12px;margin-top:8px">
-          ${activeTasks.length?`<div style="font-size:11px;color:var(--inprog);font-weight:600;margin-bottom:8px">▶ В РАБОТЕ</div>${activeTasks.map(r=>taskCard(r)).join('')}`:''}
-          ${newTasks.length?`<div style="font-size:11px;color:var(--new);font-weight:600;margin:10px 0 8px">● НОВЫЕ</div>${newTasks.map(r=>taskCard(r)).join('')}`:''}
+          ${activeTasks.length?`<div style="font-size:11px;color:var(--inprog);font-weight:600;margin-bottom:8px">▶ В РАБОТЕ</div>${activeTasks.map((r,i)=>`${i===0?'<div style="font-size:10px;color:var(--done);font-weight:700;margin-bottom:4px">▶ СЕЙЧАС ВЫПОЛНЯЕТ</div>':''}${taskCard(r)}`).join('')}`:''}
+          ${newTasks.length?`<div style="font-size:11px;color:var(--new);font-weight:600;margin:10px 0 8px">● НОВЫЕ (очередь)</div>${newTasks.map(r=>taskCard(r)).join('')}`:''}
           ${!activeTasks.length&&!newTasks.length?'<div style="font-size:13px;color:var(--muted);text-align:center;padding:12px">Нет активных задач</div>':''}
         </div>
         <button class="action-btn" style="width:100%;text-align:center;padding:8px;margin-top:10px" onclick="showWorkerHistory(${w.id},'${w.name}')">📋 Вся история сотрудника (${activeTasks.length+newTasks.length+doneTasks.length})</button>
