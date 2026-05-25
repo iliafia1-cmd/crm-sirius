@@ -1046,6 +1046,7 @@ function renderRequests() {
       <div class="rc-meta">
         <span class="type-badge">${getTypeIcon(r.type)} ${r.type}</span>
         ${worker?`<span style="font-size:12px;color:var(--muted)">${worker.name}</span>`:'<span style="font-size:12px;color:var(--warn)">Не назначен</span>'}
+        ${r.status!=='Выполнена'&&r.assignee?renderPriorityCell(r):''}
       </div>
       <div style="font-size:11px;color:${over?'var(--danger)':'var(--muted)'};margin-bottom:${actions?'8px':'0'}">
         Подана: ${r.created||'—'}${r.startedAt?' · Принята: '+r.startedAt:''} · Срок: ${r.deadline||'—'}${over?' ⚠':''}
@@ -1070,9 +1071,9 @@ function renderPriorityCell(r) {
   const idx = assigneeTasks.findIndex(x => x.id === r.id);
   if (assigneeTasks.length <= 1) return '';
   let btns = '';
-  if (idx > 0) btns += `<button class="action-btn" onclick="changePriority(${r.id},-1)" style="padding:2px 6px;font-size:11px">↑</button>`;
-  if (idx < assigneeTasks.length-1) btns += `<button class="action-btn" onclick="changePriority(${r.id},1)" style="padding:2px 6px;font-size:11px">↓</button>`;
-  return `<span style="font-size:10px;color:var(--muted)">#${idx+1}</span> ${btns}`;
+  if (idx > 0) btns += `<button class="action-btn" onclick="changePriority(${r.id},-1)" style="padding:4px 10px;font-size:13px">↑</button>`;
+  if (idx < assigneeTasks.length-1) btns += `<button class="action-btn" onclick="changePriority(${r.id},1)" style="padding:4px 10px;font-size:13px">↓</button>`;
+  return `<span style="font-size:11px;color:var(--muted);margin-right:4px">#${idx+1}</span>${btns}`;
 }
 
 function changePriority(requestId, direction) {
