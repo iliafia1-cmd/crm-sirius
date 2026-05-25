@@ -532,8 +532,21 @@
       <div><div class="field-label">Специальность</div><input class="field-input" id="sfRole" placeholder="Сантехник"></div>
     </div>
     <div class="form-row">
+      <div><div class="field-label">Роль</div>
+        <select class="field-select" id="sfRoleType" onchange="toggleSubordinatesField()">
+          <option value="worker">Рядовой исполнитель</option>
+          <option value="itr">ИТР (мастер/бригадир)</option>
+          <option value="secretary">Секретарь</option>
+        </select>
+      </div>
       <div><div class="field-label">Логин</div><input class="field-input" id="sfLogin" placeholder="petrov" autocomplete="off"></div>
+    </div>
+    <div class="form-row single">
       <div><div class="field-label">Пароль</div><div style="position:relative"><input class="field-input" id="sfPass" type="password" placeholder="Пароль" autocomplete="off" style="padding-right:40px"><button type="button" onclick="togglePass()" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);font-size:16px" id="passToggleBtn">👁</button></div></div>
+    </div>
+    <div id="subordinatesField" style="display:none">
+      <div class="field-label" style="margin-bottom:8px">Подчинённые рабочие</div>
+      <div id="subordinatesList" style="display:flex;flex-wrap:wrap;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;min-height:48px"></div>
     </div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal('staffModal')">Отмена</button>
@@ -582,6 +595,19 @@
     <div id="workerHistoryBody"></div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal('workerHistoryModal')">Закрыть</button>
+    </div>
+  </div>
+</div>
+
+<!-- REASSIGN MODAL (for ITR) -->
+<div class="modal-overlay" id="reassignModal">
+  <div class="modal" style="width:400px">
+    <div class="modal-title">Переназначить заявку</div>
+    <div class="field-label" style="margin-bottom:8px">Выберите исполнителя</div>
+    <select class="field-select" id="reassignSelect"></select>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('reassignModal')">Отмена</button>
+      <button class="btn-save" onclick="saveReassign()">Назначить</button>
     </div>
   </div>
 </div>
@@ -735,7 +761,7 @@ function doLogin() {
   const pass = document.getElementById('passInput').value;
   const user = DB.users.find(u => u.login === login && u.pass === pass);
   if (!user) { document.getElementById('loginError').style.display = 'block'; return; }
-  currentUser = user;
+  currentUser = {...user}; // copy so we have all fields including subordinates
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   startLiveSync();
@@ -773,6 +799,9 @@ function buildNav() {
   if (currentUser.role === 'owner' || currentUser.role === 'secretary') {
     tabs.push({ id:'monitor', label:'👷 Онлайн' });
     tabs.push({ id:'history', label:'📋 История' });
+  }
+  if (currentUser.role === 'itr') {
+    tabs.push({ id:'monitor', label:'👷 Моя бригада' });
   }
   if (currentUser.role === 'owner') {
     tabs.push({ id:'staff', label:'Сотрудники' });
@@ -824,12 +853,21 @@ function getBaseRequests() {
   let list = DB.requests;
   if (currentUser.role === 'worker') {
     list = list.filter(r => {
-      // Show if assigned to this worker
       if (r.assignee === currentUser.id) return true;
-      // Show if unassigned AND this worker is in the category
       if (!r.assignee) {
         const catWorkers = DB.categoryAssignments[r.type] || [];
         return catWorkers.includes(currentUser.id);
+      }
+      return false;
+    });
+  } else if (currentUser.role === 'itr') {
+    const mySubordinates = currentUser.subordinates || [];
+    list = list.filter(r => {
+      if (r.assignee === currentUser.id) return true;
+      if (mySubordinates.includes(r.assignee)) return true;
+      if (!r.assignee) {
+        const catWorkers = DB.categoryAssignments[r.type] || [];
+        return catWorkers.includes(currentUser.id) || mySubordinates.some(sid => catWorkers.includes(sid));
       }
       return false;
     });
@@ -933,7 +971,17 @@ function renderRequests() {
     let actions = '';
     if (currentUser.role==='owner' || currentUser.role==='secretary')
       actions += `<button class="action-btn" onclick="editRequest(${r.id})">✏ Изм.</button>`;
+    if (currentUser.role==='itr') {
+      // ITR can reassign requests of their subordinates
+      const mySubordinates = currentUser.subordinates || [];
+      if (r.assignee === currentUser.id || mySubordinates.includes(r.assignee) || !r.assignee)
+        actions += `<button class="action-btn" onclick="openReassignModal(${r.id})">↔ Назначить</button>`;
+    }
     if (currentUser.role==='worker' && r.status!=='Выполнена') {
+      if (r.status==='Новая') actions += `<button class="action-btn" onclick="quickStatus(${r.id},'В работе')">▶ Начать</button>`;
+      if (r.status==='В работе') actions += `<button class="action-btn" onclick="quickStatus(${r.id},'Выполнена')">✓ Готово</button>`;
+    }
+    if (currentUser.role==='itr' && r.status!=='Выполнена') {
       if (r.status==='Новая') actions += `<button class="action-btn" onclick="quickStatus(${r.id},'В работе')">▶ Начать</button>`;
       if (r.status==='В работе') actions += `<button class="action-btn" onclick="quickStatus(${r.id},'Выполнена')">✓ Готово</button>`;
     }
@@ -1004,7 +1052,9 @@ function nowDT() {
 }
 
 function renderPriorityCell(r) {
-  if (currentUser.role !== 'owner' && currentUser.role !== 'secretary') return '';
+  const canManage = currentUser.role === 'owner' || currentUser.role === 'secretary' ||
+    (currentUser.role === 'itr' && (r.assignee === currentUser.id || (currentUser.subordinates||[]).includes(r.assignee)));
+  if (!canManage) return '';
   const assigneeTasks = DB.requests
     .filter(x => x.assignee === r.assignee && x.status !== 'Выполнена')
     .sort((a,b) => (a.priority||99) - (b.priority||99));
@@ -1190,7 +1240,7 @@ function renderStaff() {
     return `<div class="staff-card" style="${w.fired?'opacity:0.6;border-style:dashed':''}">
       <div class="staff-avatar" style="${w.fired?'background:rgba(107,114,148,0.15);color:var(--muted)':''}">${initials}</div>
       <div class="staff-name">${w.name} ${w.fired?'<span style="font-size:10px;color:var(--danger);background:rgba(255,59,92,0.1);padding:2px 6px;border-radius:4px">уволен</span>':''}</div>
-      <div class="staff-role">${w.specialty} · ${w.role==='secretary'?'Секретарь':'Исполнитель'}</div>
+      <div class="staff-role">${w.specialty} · ${w.role==='secretary'?'Секретарь':w.role==='itr'?'ИТР/Мастер':'Исполнитель'}</div>
       <div class="staff-login">@${w.login}</div>
       <div class="staff-cats">${cats.map(c=>`<span class="cat-tag">${getTypeIcon(c)} ${c}</span>`).join('')}</div>
       <div style="margin-top:10px;font-size:12px;color:var(--muted)">
@@ -1227,35 +1277,80 @@ function restoreStaff(id) {
   if (u) { u.fired = false; saveData(); renderStaff(); showToast('Сотрудник восстановлен','success'); }
 }
 
+function toggleSubordinatesField() {
+  const role = document.getElementById('sfRoleType').value;
+  const field = document.getElementById('subordinatesField');
+  field.style.display = role === 'itr' ? 'block' : 'none';
+  if (role === 'itr') renderSubordinatesList();
+}
+
+function renderSubordinatesList(selectedIds) {
+  const workers = DB.users.filter(u => u.role === 'worker' && !u.fired);
+  const sel = selectedIds || [];
+  document.getElementById('subordinatesList').innerHTML = workers.length
+    ? workers.map(w => `<div class="cat-worker-chip ${sel.includes(w.id)?'assigned':''}" onclick="toggleSubordinate(${w.id})">
+        ${sel.includes(w.id)?'✓':'+'}  ${w.name} <span style="font-size:10px;color:var(--muted)">(${w.specialty})</span>
+      </div>`).join('')
+    : '<span style="font-size:12px;color:var(--muted)">Нет рядовых сотрудников</span>';
+}
+
+let _selectedSubordinates = [];
+function toggleSubordinate(id) {
+  const idx = _selectedSubordinates.indexOf(id);
+  if (idx === -1) _selectedSubordinates.push(id);
+  else _selectedSubordinates.splice(idx, 1);
+  renderSubordinatesList(_selectedSubordinates);
+}
+
 function openNewStaff() {
   editingStaffId = null;
+  _selectedSubordinates = [];
   document.getElementById('staffModalTitle').textContent = 'Новый сотрудник';
   ['sfName','sfRole','sfLogin','sfPass'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('sfRoleType').value = 'worker';
+  document.getElementById('subordinatesField').style.display = 'none';
   document.getElementById('staffModal').classList.add('open');
 }
+
 function editStaff(id) {
   const u = DB.users.find(u=>u.id===id); if (!u) return;
   editingStaffId = id;
+  _selectedSubordinates = [...(u.subordinates||[])];
   document.getElementById('staffModalTitle').textContent = 'Редактировать сотрудника';
   document.getElementById('sfName').value = u.name;
   document.getElementById('sfRole').value = u.specialty;
   document.getElementById('sfLogin').value = u.login;
   document.getElementById('sfPass').value = u.pass;
+  const roleType = u.role === 'itr' ? 'itr' : u.role === 'secretary' ? 'secretary' : 'worker';
+  document.getElementById('sfRoleType').value = roleType;
+  if (roleType === 'itr') {
+    document.getElementById('subordinatesField').style.display = 'block';
+    renderSubordinatesList(_selectedSubordinates);
+  } else {
+    document.getElementById('subordinatesField').style.display = 'none';
+  }
   document.getElementById('staffModal').classList.add('open');
 }
+
 function saveStaff() {
   const name=document.getElementById('sfName').value.trim();
   const specialty=document.getElementById('sfRole').value.trim();
   const login=document.getElementById('sfLogin').value.trim();
   const pass=document.getElementById('sfPass').value.trim();
+  const roleType=document.getElementById('sfRoleType').value;
   if (!name||!login||!pass) { showToast('Заполните все поля','error'); return; }
   if (!editingStaffId && DB.users.find(u=>u.login===login)) { showToast('Логин уже занят','error'); return; }
+  const role = roleType === 'secretary' ? 'secretary' : roleType === 'itr' ? 'itr' : 'worker';
   if (editingStaffId) {
     const u=DB.users.find(u=>u.id===editingStaffId);
-    u.name=name; u.specialty=specialty; u.login=login; u.pass=pass;
+    u.name=name; u.specialty=specialty; u.login=login; u.pass=pass; u.role=role;
+    if (role === 'itr') u.subordinates = [..._selectedSubordinates];
+    else delete u.subordinates;
     showToast('Данные обновлены','success');
   } else {
-    DB.users.push({id:DB.nextId.user++,name,login,pass,role:'worker',specialty});
+    const newUser = {id:DB.nextId.user++,name,login,pass,role,specialty};
+    if (role === 'itr') newUser.subordinates = [..._selectedSubordinates];
+    DB.users.push(newUser);
     showToast('Сотрудник добавлен','success');
   }
   saveData(); closeModal('staffModal'); renderStaff();
@@ -1501,7 +1596,13 @@ function timeSince(dtStr) {
 }
 
 function renderMonitor() {
-  const workers = DB.users.filter(u => u.role === 'worker' && !u.fired);
+  let workers;
+  if (currentUser.role === 'itr') {
+    const mySubordinates = currentUser.subordinates || [];
+    workers = DB.users.filter(u => u.role === 'worker' && !u.fired && mySubordinates.includes(u.id));
+  } else {
+    workers = DB.users.filter(u => u.role === 'worker' && !u.fired);
+  }
   const grid = document.getElementById('monitorGrid');
   const updated = document.getElementById('monitorUpdated');
   if (updated) updated.textContent = 'Обновлено: ' + new Date().toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit'});
@@ -1655,6 +1756,26 @@ function searchHistory() {
         return `<div class="request-card"><div class="rc-top"><div><div class="rc-name">${r.name}</div><div style="font-size:11px;color:var(--muted)">${r.phone||''}</div></div><div style="text-align:right"><div class="rc-id">#${r.id}</div><div style="margin-top:4px">${sb}</div></div></div>${r.apart?`<div style="font-size:12px;color:var(--muted);margin-bottom:4px">Кв. ${r.apart}</div>`:''}<div class="rc-meta"><span class="type-badge">${getTypeIcon(r.type)} ${r.type}</span>${worker?`<span style="font-size:12px;color:var(--muted)">${worker.name}</span>`:''}</div>${r.desc?`<div class="rc-desc">💬 ${r.desc}</div>`:''}<div style="font-size:11px;color:var(--muted)">${r.created||'—'}</div></div>`;
       }).join('')}
     </div>`;
+}
+
+// ========== REASSIGN (ITR) ==========
+let _reassignRequestId = null;
+function openReassignModal(requestId) {
+  _reassignRequestId = requestId;
+  const mySubordinates = currentUser.subordinates || [];
+  const available = DB.users.filter(u => u.id === currentUser.id || mySubordinates.includes(u.id));
+  const r = DB.requests.find(x=>x.id===requestId);
+  document.getElementById('reassignSelect').innerHTML =
+    `<option value="">— Не назначен —</option>` +
+    available.map(u=>`<option value="${u.id}" ${r&&r.assignee===u.id?'selected':''}>${u.name} (${u.specialty})</option>`).join('');
+  document.getElementById('reassignModal').classList.add('open');
+}
+function saveReassign() {
+  const r = DB.requests.find(x=>x.id===_reassignRequestId);
+  if (!r) return;
+  r.assignee = parseInt(document.getElementById('reassignSelect').value)||null;
+  saveData(); closeModal('reassignModal'); renderRequests();
+  showToast('Исполнитель изменён','success');
 }
 
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
