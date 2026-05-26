@@ -19,6 +19,8 @@
   %22icons%22:[{%22src%22:%22data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='32' fill='%230f1117'/%3E%3Ctext x='96' y='130' font-size='110' text-anchor='middle' fill='%234f7cff' font-family='Arial'%3E⭐%3C/text%3E%3C/svg%3E%22,%22sizes%22:%22192x192%22,%22type%22:%22image/svg+xml%22}]
 }">
 <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;600;700&family=Golos+Text:wght@400;500;600&display=swap" rel="stylesheet">
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
@@ -411,8 +413,12 @@
     <div class="tab-pane" id="tab-monitor">
       <div class="section-header">
         <div class="section-title">👷 Сотрудники — текущие задачи</div>
-        <div style="font-size:12px;color:var(--muted)" id="monitorUpdated"></div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="filter-btn" id="mapToggleBtn" onclick="toggleMonitorMap()">🗺 Показать карту</button>
+          <div style="font-size:12px;color:var(--muted)" id="monitorUpdated"></div>
+        </div>
       </div>
+      <div id="monitorMap" style="display:none;height:400px;border-radius:12px;overflow:hidden;margin-bottom:20px;border:1px solid var(--border)"></div>
       <div id="monitorGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px"></div>
     </div>
 
@@ -1601,6 +1607,113 @@ function changePriority(requestId, direction) {
 // ========== MONITOR ==========
 let _monitorTimer = null;
 
+// ========== MONITOR MAP ==========
+let _map = null;
+let _mapVisible = false;
+let _geocodeCache = {};
+
+function toggleMonitorMap() {
+  const mapDiv = document.getElementById('monitorMap');
+  const btn = document.getElementById('mapToggleBtn');
+  _mapVisible = !_mapVisible;
+  mapDiv.style.display = _mapVisible ? 'block' : 'none';
+  btn.textContent = _mapVisible ? '🗺 Скрыть карту' : '🗺 Показать карту';
+  if (_mapVisible) {
+    setTimeout(() => initMonitorMap(), 100);
+  }
+}
+
+async function initMonitorMap() {
+  if (!_map) {
+    // Белгород центр
+    _map = L.map('monitorMap').setView([50.5975, 36.5875], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap',
+      maxZoom: 19
+    }).addTo(_map);
+  }
+  _map.eachLayer(layer => { if (layer instanceof L.Marker || layer instanceof L.LayerGroup) _map.removeLayer(layer); });
+  await renderMapMarkers();
+}
+
+async function geocodeAddress(street, house) {
+  const key = `${street} ${house}`;
+  if (_geocodeCache[key]) return _geocodeCache[key];
+  try {
+    const query = encodeURIComponent(`${street} ${house}, Белгород, Россия`);
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1`);
+    const data = await res.json();
+    if (data && data[0]) {
+      const coords = [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+      _geocodeCache[key] = coords;
+      return coords;
+    }
+  } catch(e) {}
+  return null;
+}
+
+async function renderMapMarkers() {
+  if (!_map) return;
+  const addresses = DB.addresses || [];
+  const activeRequests = DB.requests.filter(r => r.status === 'В работе' && r.assignee);
+
+  for (const addr of addresses) {
+    const coords = await geocodeAddress(addr.street, addr.house);
+    if (!coords) continue;
+
+    // Find workers with active tasks at this address
+    const workersHere = activeRequests.filter(r =>
+      (r.street||'').toLowerCase() === addr.street.toLowerCase() &&
+      (r.house||'').toLowerCase() === addr.house.toLowerCase()
+    ).map(r => {
+      const worker = DB.users.find(u => u.id === r.assignee);
+      return worker ? worker.name.split(' ')[0] : '?';
+    });
+
+    const hasWorkers = workersHere.length > 0;
+
+    // Create custom icon
+    const iconHtml = hasWorkers
+      ? `<div style="background:#f5a623;border:2px solid #fff;border-radius:8px;padding:3px 6px;font-size:11px;font-weight:700;color:#000;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.4)">
+          🔧 ${workersHere.join(', ')}
+         </div>`
+      : `<div style="background:#1f2335;border:2px solid #2a2f45;border-radius:6px;padding:2px 6px;font-size:10px;color:#6b7294;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,0.3)">
+          📍 ${addr.street}, ${addr.house}
+         </div>`;
+
+    const icon = L.divIcon({
+      html: iconHtml,
+      className: '',
+      iconAnchor: [0, 0]
+    });
+
+    const marker = L.marker(coords, { icon }).addTo(_map);
+
+    // Popup with details
+    const tasksHere = activeRequests.filter(r =>
+      (r.street||'').toLowerCase() === addr.street.toLowerCase() &&
+      (r.house||'').toLowerCase() === addr.house.toLowerCase()
+    );
+    let popupHtml = `<b>${addr.street}, д.${addr.house}</b><br>`;
+    if (tasksHere.length) {
+      tasksHere.forEach(r => {
+        const w = DB.users.find(u => u.id === r.assignee);
+        const elapsed = timeSince(r.startedAt);
+        popupHtml += `<div style="margin-top:6px;padding:4px;background:#f5f5f5;border-radius:4px">
+          <b>${w ? w.name : '—'}</b><br>
+          ${getTypeIcon(r.type)} ${r.type}<br>
+          ${r.desc ? r.desc.slice(0,50) + '<br>' : ''}
+          ${elapsed ? '⏱ ' + elapsed : ''}
+        </div>`;
+      });
+    } else {
+      popupHtml += '<span style="color:#999">Нет активных заявок</span>';
+    }
+    marker.bindPopup(popupHtml);
+  }
+  _map.invalidateSize();
+}
+
 function startMonitorTimer() {
   clearInterval(_monitorTimer);
   _monitorTimer = setInterval(() => {
@@ -1644,6 +1757,8 @@ function renderMonitor() {
   const updated = document.getElementById('monitorUpdated');
   if (updated) updated.textContent = 'Обновлено: ' + new Date().toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit'});
   if (!workers.length) { grid.innerHTML = '<div class="empty"><div class="empty-icon">👷</div><div class="empty-text">Нет исполнителей</div></div>'; return; }
+  // Refresh map if visible
+  if (_mapVisible && _map) setTimeout(() => renderMapMarkers(), 200);
 
   const taskCard = (r, workerId) => {
     const addr = r.street ? `${r.street}, д.${r.house}${r.apart?' кв.'+r.apart:''}` : (r.address||'—');
