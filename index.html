@@ -413,12 +413,9 @@
     <div class="tab-pane" id="tab-monitor">
       <div class="section-header">
         <div class="section-title">👷 Сотрудники — текущие задачи</div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <button class="filter-btn" id="mapToggleBtn" onclick="toggleMonitorMap()">🗺 Показать карту</button>
-          <div style="font-size:12px;color:var(--muted)" id="monitorUpdated"></div>
-        </div>
+        <div style="font-size:12px;color:var(--muted)" id="monitorUpdated"></div>
       </div>
-      <div id="monitorMap" style="display:none;height:400px;border-radius:12px;overflow:hidden;margin-bottom:20px;border:1px solid var(--border)"></div>
+      <div id="monitorMap" style="height:380px;border-radius:12px;overflow:hidden;margin-bottom:20px;border:1px solid var(--border)"></div>
       <div id="monitorGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px"></div>
     </div>
 
@@ -839,7 +836,7 @@ function switchTab(id) {
   if (id==='categories') renderCategories();
   if (id==='settings') renderSettings();
   if (id==='history') initHistoryTab();
-  if (id==='monitor') { renderMonitor(); startMonitorTimer(); }
+  if (id==='monitor') { renderMonitor(); startMonitorTimer(); setTimeout(()=>initMonitorMap(),300); }
 }
 
 // ========== STATS CARD FILTER ==========
@@ -1609,7 +1606,7 @@ let _monitorTimer = null;
 
 // ========== MONITOR MAP ==========
 let _map = null;
-let _mapVisible = false;
+let _mapVisible = true;
 let _geocodeCache = {};
 
 function toggleMonitorMap() {
