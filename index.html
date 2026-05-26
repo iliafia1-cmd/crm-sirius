@@ -995,10 +995,12 @@ function renderRequests() {
     `;
   }
   if (currentUser.role === 'owner' || currentUser.role === 'secretary') {
-    const workers = DB.users.filter(u => u.role==='worker');
+    const workers = DB.users
+      .filter(u => (u.role==='worker' || u.role==='itr') && !u.fired)
+      .sort((a,b) => a.name.localeCompare(b.name, 'ru'));
     fhtml += `<select class="filter-select" onchange="setFilterAssignee(this.value)">
       <option value="all">Все исполнители</option>
-      ${workers.map(w=>`<option value="${w.id}" ${filterAssignee==w.id?'selected':''}>${w.name}</option>`).join('')}
+      ${workers.map(w=>`<option value="${w.id}" ${filterAssignee==w.id?'selected':''}>${w.name}${w.role==='itr'?' (ИТР)':''}</option>`).join('')}
     </select>`;
   }
   filters.innerHTML = fhtml;
