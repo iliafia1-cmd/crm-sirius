@@ -99,39 +99,43 @@
   /* Маркеры карты CRM */
   .leaflet-div-icon.crm-marker-wrap { background: transparent !important; border: 0 !important; }
   .crm-marker {
-    white-space: nowrap;
-    border-radius: 6px;
+    display: flex; flex-direction: column; align-items: center;
     font-family: 'Golos Text', sans-serif;
     transform: translate(-50%, -50%);
-    border: 1px solid #000;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.45);
-    overflow: hidden;
+    pointer-events: auto;
   }
-  /* Пустой дом — белая плашка с чёрным адресом и тонкой чёрной окантовкой */
-  .crm-marker-empty {
+  /* Сам пин — небольшой кружок */
+  .crm-marker-pin {
+    width: 14px; height: 14px;
     background: #fff;
-    color: #111;
-    font-size: 11px;
-    font-weight: 600;
-    padding: 3px 7px;
+    border: 1.5px solid #000;
+    border-radius: 50%;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.5);
   }
-  /* Дом с рабочими — вся плашка оранжевая, под адресом синяя строка с фамилией */
-  .crm-marker-active { background: #ff6b1a; padding: 0; }
-  .crm-marker-active .crm-marker-addr {
+  .crm-marker-active .crm-marker-pin {
+    background: #ff6b1a;
+  }
+  /* Подпись адреса под пином */
+  .crm-marker-addr {
+    margin-top: 3px;
     color: #111;
     font-size: 11px;
     font-weight: 700;
-    padding: 3px 7px;
-    text-align: center;
+    text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff;
+    white-space: nowrap;
   }
-  .crm-marker-active .crm-marker-workers {
+  /* Фамилия — отдельной плашкой ещё ниже */
+  .crm-marker-workers {
+    margin-top: 2px;
     background: #1976ff;
     color: #fff;
     font-size: 11px;
     font-weight: 800;
-    padding: 3px 7px;
-    text-align: center;
-    border-top: 1px solid #000;
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid #000;
+    white-space: nowrap;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.5);
   }
   :root {
     --bg: #0f1117; --surface: #181c27; --surface2: #1f2335; --border: #2a2f45;
@@ -1768,13 +1772,14 @@ async function renderMapMarkers() {
     const hasWorkers = workersHere.length > 0;
     const addressLine = `${addr.street}, ${addr.house}`;
 
-    // Один прямоугольник — адрес сверху, под ним фамилии (если есть). Без 📍.
-    const iconHtml = hasWorkers
-      ? `<div class="crm-marker crm-marker-active">
-          <div class="crm-marker-addr">${addressLine}</div>
-          <div class="crm-marker-workers">${workersHere.join(', ')}</div>
-         </div>`
-      : `<div class="crm-marker crm-marker-empty">${addressLine}</div>`;
+    // Пин-кружок сверху, под ним адрес, потом (опционально) фамилия
+    const iconHtml = `
+      <div class="crm-marker ${hasWorkers ? 'crm-marker-active' : 'crm-marker-empty'}">
+        <div class="crm-marker-pin"></div>
+        <div class="crm-marker-addr">${addressLine}</div>
+        ${hasWorkers ? `<div class="crm-marker-workers">${workersHere.join(', ')}</div>` : ''}
+      </div>
+    `;
 
     const icon = L.divIcon({
       html: iconHtml,
