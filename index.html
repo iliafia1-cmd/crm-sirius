@@ -96,6 +96,11 @@
   setTimeout(() => document.dispatchEvent(new CustomEvent('firebaseReady')), 100);
 </script>
 <style>
+  /* Снимаем дефолтное оформление Leaflet с наших маркеров — оставляем только HTML внутри */
+  .leaflet-div-icon.crm-house-marker {
+    background: transparent !important;
+    border: 0 !important;
+  }
   :root {
     --bg: #0f1117; --surface: #181c27; --surface2: #1f2335; --border: #2a2f45;
     --accent: #4f7cff; --accent2: #00d4aa; --warn: #ff6b35; --danger: #ff3b5c;
@@ -1696,8 +1701,7 @@ async function renderMapMarkers() {
 
     const icon = L.divIcon({
       html: iconHtml,
-      className: '',
-      iconSize: null,
+      className: 'crm-house-marker',
       iconAnchor: [0, 0]
     });
 
