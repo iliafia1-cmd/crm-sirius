@@ -99,19 +99,35 @@
   /* Маркеры карты CRM */
   .leaflet-div-icon.crm-marker-wrap { background: transparent !important; border: 0 !important; }
   .crm-marker {
-    white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-    border-radius: 6px; padding: 3px 7px; font-size: 11px; line-height: 1.3;
-    transform: translate(-50%, -50%);
+    white-space: nowrap;
+    border-radius: 6px;
     font-family: 'Golos Text', sans-serif;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 0 2px #fff, 0 2px 8px rgba(0,0,0,0.5);
   }
+  /* Пустой дом — белая плашка с чёрным адресом */
   .crm-marker-empty {
-    background: #1f2335; border: 2px solid #2a2f45; color: #9aa1c2; font-size: 10px;
+    background: #fff;
+    color: #111;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 7px;
   }
-  .crm-marker-active {
-    background: #1f2335; border: 2px solid #f5a623;
+  /* Дом с рабочими — белая плашка сверху + оранжевая таблетка снизу */
+  .crm-marker-active { background: transparent; padding: 0; box-shadow: none; }
+  .crm-marker-active .crm-marker-addr {
+    background: #fff; color: #111; font-size: 11px; font-weight: 600;
+    padding: 3px 7px; border-radius: 6px;
+    box-shadow: 0 0 0 2px #fff, 0 2px 6px rgba(0,0,0,0.5);
   }
-  .crm-marker-active .crm-marker-addr { color: #9aa1c2; font-size: 10px; }
-  .crm-marker-active .crm-marker-workers { color: #f5a623; font-weight: 700; }
+  .crm-marker-active .crm-marker-workers {
+    margin-top: 3px;
+    background: #ff6b1a; color: #fff;
+    font-size: 11px; font-weight: 800;
+    padding: 3px 7px; border-radius: 6px;
+    box-shadow: 0 0 0 2px #fff, 0 2px 6px rgba(0,0,0,0.5);
+    text-align: center;
+  }
   :root {
     --bg: #0f1117; --surface: #181c27; --surface2: #1f2335; --border: #2a2f45;
     --accent: #4f7cff; --accent2: #00d4aa; --warn: #ff6b35; --danger: #ff3b5c;
@@ -1751,7 +1767,7 @@ async function renderMapMarkers() {
     const iconHtml = hasWorkers
       ? `<div class="crm-marker crm-marker-active">
           <div class="crm-marker-addr">${addressLine}</div>
-          <div class="crm-marker-workers">🔧 ${workersHere.join(', ')}</div>
+          <div class="crm-marker-workers">${workersHere.join(', ')}</div>
          </div>`
       : `<div class="crm-marker crm-marker-empty">${addressLine}</div>`;
 
