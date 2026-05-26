@@ -1003,7 +1003,7 @@ function renderRequests() {
   }
   filters.innerHTML = fhtml;
 
-  document.getElementById('tableHead').innerHTML = `<th>№</th><th>#</th><th>Жилец</th><th>Адрес</th><th>Тип</th><th>Исполнитель</th><th>Очередь</th><th>Подана</th><th>Принята</th><th>Срок</th><th>Статус</th><th>Действия</th>`;
+  document.getElementById('tableHead').innerHTML = `<th>№</th><th>#</th><th>Жилец</th><th>Адрес</th><th>Тип</th><th>Исполнитель</th><th>Поступила</th><th>Принята в работу</th><th>Статус</th><th>Действия</th>`;
   const tbody = document.getElementById('requestsBody');
   const list = getFilteredRequests();
   if (!list.length) {
@@ -1018,12 +1018,14 @@ function renderRequests() {
       : r.status==='В работе'
       ? `<span class="badge badge-inprog">● В работе</span>`
       : `<span class="badge badge-done">✓ Выполнена</span>${r.closedBy ? `<div style="font-size:10px;color:var(--muted);margin-top:3px">${r.closedBy}</div>` : ''}`;
-    const deadlineBadge = over
-      ? `<span style="color:var(--danger);font-weight:600">${r.deadline} ⚠</span>`
-      : `<span>${r.deadline||'—'}</span>`;
     const addrLine = r.street ? `${r.street}, д.${r.house}` : (r.address||'—');
     const subLine = [r.entrance?`Подъезд ${r.entrance}`:'', r.floor?`эт.${r.floor}`:'', r.apart?`кв.${r.apart}`:''].filter(Boolean).join(', ');
     const descLine = r.desc ? `<div style="font-size:11px;color:var(--muted);margin-top:3px;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${r.desc}">💬 ${r.desc}</div>` : '';
+    // Дата+автор для «Поступила» и «Принята в работу»
+    const createdCell = `<div>${r.created||'—'}</div>${r.createdBy?`<div style="font-size:10px;color:var(--muted);margin-top:2px">${r.createdBy}</div>`:''}`;
+    const startedCell = r.startedAt
+      ? `<div>${r.startedAt}</div>${r.startedBy?`<div style="font-size:10px;color:var(--muted);margin-top:2px">${r.startedBy}</div>`:''}`
+      : '—';
     let actions = '';
     if (currentUser.role==='owner' || currentUser.role==='secretary')
       actions += `<button class="action-btn" onclick="editRequest(${r.id})">✏ Изм.</button>`;
@@ -1050,9 +1052,8 @@ function renderRequests() {
       <td><div>${addrLine}</div><div style="font-size:11px;color:var(--muted)">${subLine}</div></td>
       <td><span class="type-badge">${getTypeIcon(r.type)||''} ${r.type}</span>${descLine}</td>
       <td>${worker?worker.name:'—'}</td>
-      <td style="font-size:11px;color:var(--muted)">${r.created||'—'}</td>
-      <td style="font-size:11px;color:var(--muted)">${r.startedAt||'—'}</td>
-      <td>${deadlineBadge}</td>
+      <td style="font-size:11px;color:var(--muted)">${createdCell}</td>
+      <td style="font-size:11px;color:var(--muted)">${startedCell}</td>
       <td>${statusBadge}</td>
       <td>${actions}</td>
     </tr>`;
@@ -1181,6 +1182,11 @@ function quickStatus(id, status) {
   if (status === 'В работе') {
     if (!r.startedAt) r.startedAt = nowDT();
     if (!r.assignee && (currentUser.role === 'worker' || currentUser.role === 'itr')) r.assignee = currentUser.id;
+    // Фиксируем, кто принял в работу — только один раз (первое нажатие)
+    if (!r.startedBy) {
+      const roleLabel = { owner: 'Владелец', secretary: 'Секретарь', itr: currentUser.name, worker: currentUser.name };
+      r.startedBy = roleLabel[currentUser.role] || currentUser.name;
+    }
   }
   if (status === 'Выполнена') {
     if (!r.doneAt) r.doneAt = nowDT();
@@ -1277,26 +1283,40 @@ function saveRequest() {
   if (editingRequestId) {
     const r = DB.requests.find(r=>r.id===editingRequestId);
     data.created = r.created;
+    data.createdBy = r.createdBy || null;
     data.startedAt = r.startedAt || null;
+    data.startedBy = r.startedBy || null;
     data.doneAt = r.doneAt || null;
     data.closedBy = r.closedBy || null;
+    // Если статус меняется на В работе — фиксируем дату и кто принял
+    if (data.status === 'В работе' && r.status !== 'В работе') {
+      if (!data.startedAt) data.startedAt = nowDT();
+      if (!data.startedBy) {
+        const roleLabel = { owner: 'Владелец', secretary: 'Секретарь', itr: currentUser.name, worker: currentUser.name };
+        data.startedBy = roleLabel[currentUser.role] || currentUser.name;
+      }
+    }
     // Если статус меняется на Выполнена — фиксируем кто закрыл
     if (data.status === 'Выполнена' && r.status !== 'Выполнена') {
       data.doneAt = nowDT();
       const roleLabel = { owner: 'Владелец', secretary: 'Секретарь', itr: currentUser.name, worker: currentUser.name };
       data.closedBy = roleLabel[currentUser.role] || currentUser.name;
     }
-    // Если статус сняли с Выполнена — сбрасываем
+    // Если статус снят с Выполнена — сбрасываем
     if (data.status !== 'Выполнена') { data.closedBy = null; data.doneAt = null; }
     Object.assign(r, data);
     showToast('Заявка обновлена','success');
   } else {
     data.id = DB.nextId.request++;
     data.created = nowDT();
+    // Кто внёс заявку
+    const roleLabel = { owner: 'Администратор', secretary: 'Секретарь', itr: currentUser.name, worker: currentUser.name };
+    data.createdBy = roleLabel[currentUser.role] || currentUser.name;
     const days = getTypeDays(data.type);
     const dl = new Date(); dl.setDate(dl.getDate() + days);
     data.deadline = dl.toISOString().slice(0,10);
     data.startedAt = null;
+    data.startedBy = null;
     data.doneAt = null;
     DB.requests.unshift(data);
     // Уведомление назначенному исполнителю
