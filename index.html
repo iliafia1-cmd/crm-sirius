@@ -1652,29 +1652,19 @@ function renderMonitor() {
     const borderColor = r.status==='Новая'?'var(--new)':r.status==='В работе'?'var(--inprog)':'var(--done)';
     const sb = r.status==='Новая'?`<span class="badge badge-new" style="font-size:10px">● Новая</span>`:r.status==='В работе'?`<span class="badge badge-inprog" style="font-size:10px">● В работе</span>`:`<span class="badge badge-done" style="font-size:10px">✓ Готово</span>`;
     const canPriority = (currentUser.role==='owner'||currentUser.role==='secretary'||currentUser.role==='itr') && r.status!=='Выполнена';
-    const dragHandle = canPriority ? `<span class="drag-handle" title="Перетащите для изменения порядка">⠿</span>` : '';
-    const idx = getPriorityIdx(r);
-    return `<div class="monitor-task ${over?'monitor-task-overdue':''}" 
-        style="border-left-color:${borderColor}"
-        data-request-id="${r.id}" 
-        data-worker-id="${workerId}"
-        ${canPriority?`draggable="true" 
-          ondragstart="monitorDragStart(event,${r.id},${workerId})"
-          ondragover="monitorDragOver(event)"
-          ondragleave="monitorDragLeave(event)"
-          ondrop="monitorDrop(event,${r.id},${workerId})"
-          ontouchstart="monitorTouchStart(event,${r.id},${workerId})"
-          ontouchmove="monitorTouchMove(event)"
-          ontouchend="monitorTouchEnd(event,${r.id},${workerId})"`:''}>
+    // Priority buttons
+    let prioBtns = '';
+    if (canPriority) {
+      const tasks = DB.requests.filter(x=>x.assignee===workerId&&x.status!=='Выполнена').sort((a,b)=>(a.priority||99)-(b.priority||99));
+      const idx = tasks.findIndex(x=>x.id===r.id);
+      prioBtns = `<span style="font-size:11px;color:var(--muted);margin-right:2px">#${idx+1}</span>`;
+      if (idx > 0) prioBtns += `<button class="action-btn" onclick="swapPriorities(${r.id},${tasks[idx-1].id},${workerId})" style="padding:4px 10px;font-size:14px;line-height:1">↑</button>`;
+      if (idx < tasks.length-1) prioBtns += `<button class="action-btn" onclick="swapPriorities(${r.id},${tasks[idx+1].id},${workerId})" style="padding:4px 10px;font-size:14px;line-height:1">↓</button>`;
+    }
+    return `<div class="monitor-task ${over?'monitor-task-overdue':''}" style="border-left-color:${borderColor}">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px">
-        <div style="display:flex;align-items:flex-start;gap:4px;flex:1">
-          ${dragHandle}
-          <div>
-            ${idx?`<span style="font-size:10px;color:var(--muted);font-weight:600">#${idx} </span>`:''}
-            <span class="monitor-task-addr">📍 ${addr}</span>
-          </div>
-        </div>
-        ${sb}
+        <div class="monitor-task-addr" style="flex:1">📍 ${addr}</div>
+        <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">${prioBtns}${sb}</div>
       </div>
       <div class="monitor-task-type">${getTypeIcon(r.type)} ${r.type}${r.desc?' — '+r.desc.slice(0,50):''}</div>
       ${elapsed&&r.status==='В работе'?`<div class="monitor-task-time ${over?'overdue':''}">⏱ В работе: ${elapsed}${over?' ⚠':''}</div>`:''}
