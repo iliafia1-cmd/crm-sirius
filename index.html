@@ -1048,7 +1048,7 @@ function renderRequests() {
     if (currentUser.role==='owner')
       actions += `<button class="action-btn danger" onclick="deleteRequest(${r.id})">✕</button>`;
     return `<tr class="${over?'overdue-row':''}">
-      <td>${r.status!=='Выполнена'&&r.assignee?`<span style="font-size:11px;color:var(--muted)">#${getPriorityIdx(r)}</span>`:''}</td>
+      <td>${r.status!=='Выполнена'&&r.assignee?renderPriorityCell(r):''}</td>
       <td style="color:var(--muted);font-size:12px">#${r.id}</td>
       <td><div style="font-weight:500">${r.name}</div><div style="font-size:11px;color:var(--muted)">${r.phone}</div></td>
       <td><div>${addrLine}</div><div style="font-size:11px;color:var(--muted)">${subLine}</div></td>
@@ -1105,7 +1105,7 @@ function renderRequests() {
       <div class="rc-meta">
         <span class="type-badge">${getTypeIcon(r.type)} ${r.type}</span>
         ${worker?`<span style="font-size:12px;color:var(--muted)">${worker.name}</span>`:'<span style="font-size:12px;color:var(--warn)">Не назначен</span>'}
-      ${r.status!=='Выполнена'&&r.assignee?`<span style="font-size:11px;color:var(--muted)">#${getPriorityIdx(r)}</span>`:''}
+      ${r.status!=='Выполнена'&&r.assignee?renderPriorityCell(r):''}
       </div>
       <div style="font-size:11px;color:${over?'var(--danger)':'var(--muted)'};margin-bottom:${actions?'8px':'0'}">
         Подана: ${r.created||'—'}${r.startedAt?' · Принята: '+r.startedAt:''} · Срок: ${r.deadline||'—'}${over?' ⚠':''}
