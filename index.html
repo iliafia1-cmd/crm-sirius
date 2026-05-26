@@ -413,9 +413,12 @@
     <div class="tab-pane" id="tab-monitor">
       <div class="section-header">
         <div class="section-title">👷 Сотрудники — текущие задачи</div>
-        <div style="font-size:12px;color:var(--muted)" id="monitorUpdated"></div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="filter-btn active" id="mapToggleBtn" onclick="toggleMonitorMap()">🗺 Показать карту</button>
+          <div style="font-size:12px;color:var(--muted)" id="monitorUpdated"></div>
+        </div>
       </div>
-      <div id="monitorMap" style="height:380px;border-radius:12px;overflow:hidden;margin-bottom:20px;border:1px solid var(--border)"></div>
+      <div id="monitorMap" style="display:none;height:380px;border-radius:12px;overflow:hidden;margin-bottom:20px;border:1px solid var(--border)"></div>
       <div id="monitorGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px"></div>
     </div>
 
@@ -836,7 +839,12 @@ function switchTab(id) {
   if (id==='categories') renderCategories();
   if (id==='settings') renderSettings();
   if (id==='history') initHistoryTab();
-  if (id==='monitor') { renderMonitor(); startMonitorTimer(); setTimeout(()=>initMonitorMap(),300); }
+  if (id==='monitor') { 
+    renderMonitor(); 
+    startMonitorTimer(); 
+    // Wait for tab to be visible before init map
+    requestAnimationFrame(() => requestAnimationFrame(() => initMonitorMap()));
+  }
 }
 
 // ========== STATS CARD FILTER ==========
@@ -1621,16 +1629,24 @@ function toggleMonitorMap() {
 }
 
 async function initMonitorMap() {
+  const mapDiv = document.getElementById('monitorMap');
+  if (!mapDiv) return;
+  // Force height
+  mapDiv.style.height = '380px';
+  mapDiv.style.minHeight = '380px';
+  
   if (!_map) {
-    // Белгород центр
-    _map = L.map('monitorMap').setView([50.5975, 36.5875], 13);
+    _map = L.map('monitorMap', { zoomControl: true }).setView([50.5975, 36.5875], 13);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OpenStreetMap',
       maxZoom: 19
     }).addTo(_map);
   }
-  _map.eachLayer(layer => { if (layer instanceof L.Marker || layer instanceof L.LayerGroup) _map.removeLayer(layer); });
-  await renderMapMarkers();
+  
+  setTimeout(() => {
+    _map.invalidateSize();
+    renderMapMarkers();
+  }, 200);
 }
 
 async function geocodeAddress(street, house) {
