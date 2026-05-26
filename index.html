@@ -411,10 +411,10 @@
 
     <!-- МОНИТОРИНГ СОТРУДНИКОВ -->
     <div class="tab-pane" id="tab-monitor">
-      <div class="section-header">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
         <div class="section-title">👷 Сотрудники — текущие задачи</div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <button class="filter-btn active" id="mapToggleBtn" onclick="toggleMonitorMap()">🗺 Показать карту</button>
+        <div style="display:flex;gap:10px;align-items:center">
+          <button class="btn-add" id="mapToggleBtn" onclick="toggleMonitorMap()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text)">🗺 Карта</button>
           <div style="font-size:12px;color:var(--muted)" id="monitorUpdated"></div>
         </div>
       </div>
