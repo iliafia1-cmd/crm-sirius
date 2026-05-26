@@ -470,6 +470,15 @@
       <div class="section-header">
         <div class="section-title">📋 История по квартире</div>
       </div>
+      <!-- Быстрый поиск по номеру заявки -->
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:14px">
+        <div class="field-label">🔢 Поиск по номеру заявки</div>
+        <div style="display:flex;gap:10px;margin-top:6px;flex-wrap:wrap">
+          <input class="field-input" id="hNumber" placeholder="Например, 2605-3" style="flex:1;min-width:200px" onkeydown="if(event.key==='Enter')searchByNumber()">
+          <button class="btn-add" onclick="searchByNumber()" style="white-space:nowrap">🔍 Найти</button>
+        </div>
+      </div>
+      <!-- Поиск по адресу -->
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px">
         <div class="form-row triple">
           <div>
@@ -2214,29 +2223,49 @@ function searchHistory() {
     return sMatch && hMatch && aMatch;
   });
   results.sort((a,b)=>(b.created||'').localeCompare(a.created||''));
+  const title = `${street}, д.${house}${apart?' кв.'+apart:''}`;
+  renderHistoryResults(results, `по адресу <b style="color:var(--accent)">${title}</b>`);
+}
+
+function searchByNumber() {
+  const q = (document.getElementById('hNumber').value || '').trim().toLowerCase();
+  if (!q) { showToast('Введите номер заявки','error'); return; }
+  // Нормализуем: убираем ведущий «#», если ввели
+  const needle = q.replace(/^#/, '');
+  const results = DB.requests.filter(r => {
+    const dn = String(r.displayNumber || '').toLowerCase();
+    const id = String(r.id || '').toLowerCase();
+    return dn === needle || id === needle || dn.startsWith(needle);
+  });
+  results.sort((a,b)=>(b.created||'').localeCompare(a.created||''));
+  renderHistoryResults(results, `по номеру <b style="color:var(--accent)">${needle}</b>`);
+}
+
+function renderHistoryResults(results, titleHtml) {
   const container = document.getElementById('historyResult');
   if (!results.length) {
-    container.innerHTML = `<div class="empty"><div class="empty-icon">📭</div><div class="empty-text">Заявок по этому адресу не найдено</div></div>`;
+    container.innerHTML = `<div class="empty"><div class="empty-icon">📭</div><div class="empty-text">Заявок не найдено</div></div>`;
     return;
   }
-  const title = `${street}, д.${house}${apart?' кв.'+apart:''}`;
   container.innerHTML = `
     <div style="margin-bottom:14px;font-size:13px;color:var(--muted)">
-      Найдено: <b style="color:var(--text)">${results.length}</b> заявок по адресу <b style="color:var(--accent)">${title}</b>
+      Найдено: <b style="color:var(--text)">${results.length}</b> заявок ${titleHtml}
     </div>
     <div class="table-wrap">
-      <table><thead><tr><th>#</th><th>Жилец</th><th>Кв.</th><th>Тип</th><th>Описание</th><th>Исполнитель</th><th>Подана</th><th>Статус</th></tr></thead>
+      <table><thead><tr><th>#</th><th>Жилец</th><th>Адрес</th><th>Кв.</th><th>Тип</th><th>Описание</th><th>Исполнитель</th><th>Подана</th><th>Статус</th></tr></thead>
       <tbody>${results.map(r=>{
         const worker=DB.users.find(u=>u.id===r.assignee);
         const sb=r.status==='Новая'?`<span class="badge badge-new">● Новая</span>`:r.status==='В работе'?`<span class="badge badge-inprog">● В работе</span>`:`<span class="badge badge-done">✓ Выполнена${r.closedBy?' ('+r.closedBy+')':''}</span>`;
-        return `<tr><td style="color:var(--muted);font-size:12px">#${r.displayNumber||r.id}</td><td><div style="font-weight:500">${r.name}</div><div style="font-size:11px;color:var(--muted)">${r.phone||''}</div></td><td>${r.apart||'—'}</td><td><span class="type-badge">${getTypeIcon(r.type)} ${r.type}</span></td><td style="font-size:12px;color:var(--muted)">${r.desc||'—'}</td><td>${worker?worker.name:'—'}</td><td style="font-size:11px;color:var(--muted)">${r.created||'—'}</td><td>${sb}</td></tr>`;
+        const addr = r.street ? `${r.street}, д.${r.house}` : (r.address||'—');
+        return `<tr><td style="color:var(--muted);font-size:12px">#${r.displayNumber||r.id}</td><td><div style="font-weight:500">${r.name}</div><div style="font-size:11px;color:var(--muted)">${r.phone||''}</div></td><td style="font-size:12px">${addr}</td><td>${r.apart||'—'}</td><td><span class="type-badge">${getTypeIcon(r.type)} ${r.type}</span></td><td style="font-size:12px;color:var(--muted)">${r.desc||'—'}</td><td>${worker?worker.name:'—'}</td><td style="font-size:11px;color:var(--muted)">${r.created||'—'}</td><td>${sb}</td></tr>`;
       }).join('')}</tbody></table>
     </div>
     <div class="request-cards">
       ${results.map(r=>{
         const worker=DB.users.find(u=>u.id===r.assignee);
         const sb=r.status==='Новая'?`<span class="badge badge-new">● Новая</span>`:r.status==='В работе'?`<span class="badge badge-inprog">● В работе</span>`:`<span class="badge badge-done">✓ Выполнена${r.closedBy?' ('+r.closedBy+')':''}</span>`;
-        return `<div class="request-card"><div class="rc-top"><div><div class="rc-name">${r.name}</div><div style="font-size:11px;color:var(--muted)">${r.phone||''}</div></div><div style="text-align:right"><div class="rc-id">#${r.displayNumber||r.id}</div><div style="margin-top:4px">${sb}</div></div></div>${r.apart?`<div style="font-size:12px;color:var(--muted);margin-bottom:4px">Кв. ${r.apart}</div>`:''}<div class="rc-meta"><span class="type-badge">${getTypeIcon(r.type)} ${r.type}</span>${worker?`<span style="font-size:12px;color:var(--muted)">${worker.name}</span>`:''}</div>${r.desc?`<div class="rc-desc">💬 ${r.desc}</div>`:''}<div style="font-size:11px;color:var(--muted)">${r.created||'—'}</div></div>`;
+        const addr = r.street ? `${r.street}, д.${r.house}` : (r.address||'—');
+        return `<div class="request-card"><div class="rc-top"><div><div class="rc-name">${r.name}</div><div style="font-size:11px;color:var(--muted)">${r.phone||''}</div></div><div style="text-align:right"><div class="rc-id">#${r.displayNumber||r.id}</div><div style="margin-top:4px">${sb}</div></div></div><div style="font-size:12px;color:var(--muted);margin-bottom:4px">${addr}${r.apart?' · кв. '+r.apart:''}</div><div class="rc-meta"><span class="type-badge">${getTypeIcon(r.type)} ${r.type}</span>${worker?`<span style="font-size:12px;color:var(--muted)">${worker.name}</span>`:''}</div>${r.desc?`<div class="rc-desc">💬 ${r.desc}</div>`:''}<div style="font-size:11px;color:var(--muted)">${r.created||'—'}</div></div>`;
       }).join('')}
     </div>`;
 }
