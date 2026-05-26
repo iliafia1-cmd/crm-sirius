@@ -96,11 +96,6 @@
   setTimeout(() => document.dispatchEvent(new CustomEvent('firebaseReady')), 100);
 </script>
 <style>
-  /* Снимаем дефолтное оформление Leaflet с наших маркеров — оставляем только HTML внутри */
-  .leaflet-div-icon.crm-house-marker {
-    background: transparent !important;
-    border: 0 !important;
-  }
   :root {
     --bg: #0f1117; --surface: #181c27; --surface2: #1f2335; --border: #2a2f45;
     --accent: #4f7cff; --accent2: #00d4aa; --warn: #ff6b35; --danger: #ff3b5c;
@@ -1688,20 +1683,18 @@ async function renderMapMarkers() {
 
     const hasWorkers = workersHere.length > 0;
 
-    // Create custom icon — адрес всегда виден; если есть рабочие, под ним список фамилий
-    const addressLine = `${addr.street}, ${addr.house}`;
+    // Create custom icon
     const iconHtml = hasWorkers
-      ? `<div style="background:#1f2335;border:2px solid #f5a623;border-radius:6px;padding:3px 7px;font-size:11px;color:#e8eaf0;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.4);line-height:1.3">
-          <div style="color:#9aa1c2;font-size:10px">${addressLine}</div>
-          <div style="color:#f5a623;font-weight:700">🔧 ${workersHere.join(', ')}</div>
+      ? `<div style="background:#f5a623;border:2px solid #fff;border-radius:8px;padding:3px 6px;font-size:11px;font-weight:700;color:#000;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.4)">
+          🔧 ${workersHere.join(', ')}
          </div>`
       : `<div style="background:#1f2335;border:2px solid #2a2f45;border-radius:6px;padding:2px 6px;font-size:10px;color:#6b7294;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,0.3)">
-          ${addressLine}
+          📍 ${addr.street}, ${addr.house}
          </div>`;
 
     const icon = L.divIcon({
       html: iconHtml,
-      className: 'crm-house-marker',
+      className: '',
       iconAnchor: [0, 0]
     });
 
