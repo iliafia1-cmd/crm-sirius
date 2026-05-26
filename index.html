@@ -759,6 +759,12 @@ async function initDB() {
   }
   if (window._fbInit) {
     DB = await window._fbInit(DEFAULT_DATA);
+    // Проставляем displayNumber всем заявкам (один раз — если хоть у одной его нет)
+    const needsMigration = (DB.requests || []).some(r => !r.displayNumber);
+    if (needsMigration) {
+      rebuildAllDisplayNumbers();
+      if (window._fbSave) window._fbSave(DB);
+    }
     try { localStorage.setItem('crm_sirius_cache', JSON.stringify(DB)); } catch(e) {}
   }
   showLoadingScreen(false);
@@ -1049,7 +1055,7 @@ function renderRequests() {
       actions += `<button class="action-btn danger" onclick="deleteRequest(${r.id})">✕</button>`;
     return `<tr class="${over?'overdue-row':''}">
       <td>${r.status!=='Выполнена'&&r.assignee?renderPriorityCell(r):''}</td>
-      <td style="color:var(--muted);font-size:12px">#${r.id}</td>
+      <td style="color:var(--muted);font-size:12px">#${r.displayNumber||r.id}</td>
       <td><div style="font-weight:500">${r.name}</div><div style="font-size:11px;color:var(--muted)">${r.phone}</div></td>
       <td><div>${addrLine}</div><div style="font-size:11px;color:var(--muted)">${subLine}</div></td>
       <td><span class="type-badge">${getTypeIcon(r.type)||''} ${r.type}</span>${descLine}</td>
@@ -1095,7 +1101,7 @@ function renderRequests() {
       <div class="rc-top">
         <div><div class="rc-name">${r.name}</div><div style="font-size:11px;color:var(--muted)">${r.phone||''}</div></div>
         <div style="text-align:right">
-          <div class="rc-id">#${r.id}</div>
+          <div class="rc-id">#${r.displayNumber||r.id}</div>
           ${r.status!=='Выполнена'&&r.assignee?`<div style="margin-top:4px">${renderPriorityCell(r)}</div>`:''}
           <div style="margin-top:4px">${statusBadge}</div>
         </div>
@@ -1118,6 +1124,62 @@ function renderRequests() {
 function nowDT() {
   const d = new Date();
   return d.toLocaleDateString('ru-RU') + ' ' + d.toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit'});
+}
+
+// === Номера заявок в формате ДДММ-N ===
+// Извлекает ключ "ддмм" из строки "ДД.ММ.ГГГГ ЧЧ:ММ" (так возвращает nowDT)
+function dateKeyFromCreated(created) {
+  if (!created) return null;
+  const m = String(created).match(/^(\d{1,2})[.\/-](\d{1,2})/);
+  if (!m) return null;
+  const dd = String(m[1]).padStart(2, '0');
+  const mm = String(m[2]).padStart(2, '0');
+  return dd + mm;
+}
+
+// Пересчитывает номер displayNumber у всех заявок: сортируем по дате создания,
+// для каждого дня нумеруем подряд 1, 2, 3…
+function rebuildAllDisplayNumbers() {
+  if (!DB.requests) return;
+  // Сортируем копию по дате создания (старые → новые)
+  const sorted = DB.requests.slice().sort((a,b) => {
+    const ta = parseCreatedToTs(a.created);
+    const tb = parseCreatedToTs(b.created);
+    return ta - tb;
+  });
+  const counters = {}; // dateKey -> next index
+  for (const r of sorted) {
+    const key = dateKeyFromCreated(r.created) || '0000';
+    counters[key] = (counters[key] || 0) + 1;
+    r.displayNumber = key + '-' + counters[key];
+  }
+}
+
+// Преобразование "ДД.ММ.ГГГГ ЧЧ:ММ" в timestamp для сортировки
+function parseCreatedToTs(s) {
+  if (!s) return 0;
+  const m = String(s).match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})\s+(\d{1,2}):(\d{2})/);
+  if (!m) return 0;
+  let yr = parseInt(m[3], 10);
+  if (yr < 100) yr += 2000;
+  return new Date(yr, parseInt(m[2],10)-1, parseInt(m[1],10), parseInt(m[4],10), parseInt(m[5],10)).getTime();
+}
+
+// Назначить номер ОДНОЙ новой заявке, основываясь на текущей базе
+function assignDisplayNumber(req) {
+  const key = dateKeyFromCreated(req.created) || '0000';
+  // Самый большой существующий номер за этот день
+  let maxN = 0;
+  for (const r of (DB.requests || [])) {
+    if (r === req) continue;
+    if (!r.displayNumber) continue;
+    const m = String(r.displayNumber).match(/^(\d{4})-(\d+)$/);
+    if (m && m[1] === key) {
+      const n = parseInt(m[2], 10);
+      if (n > maxN) maxN = n;
+    }
+  }
+  req.displayNumber = key + '-' + (maxN + 1);
 }
 
 function getPriorityIdx(r) {
@@ -1321,6 +1383,8 @@ function saveRequest() {
     data.startedBy = null;
     data.doneAt = null;
     DB.requests.unshift(data);
+    // Присваиваем номер в формате ДДММ-N
+    assignDisplayNumber(data);
     // Уведомление назначенному исполнителю
     if (data.assignee && window._sendPushToUser) {
       console.log('Sending push to user:', data.assignee);
@@ -1953,7 +2017,7 @@ function renderMonitor() {
       </div>
       <div class="monitor-task-type">${getTypeIcon(r.type)} ${r.type}${r.desc?' — '+r.desc.slice(0,50):''}</div>
       ${elapsed&&r.status==='В работе'?`<div class="monitor-task-time ${over?'overdue':''}">⏱ В работе: ${elapsed}${over?' ⚠':''}</div>`:''}
-      <div style="font-size:11px;color:var(--muted)">Срок: ${r.deadline||'—'} · #${r.id}</div>
+      <div style="font-size:11px;color:var(--muted)">Срок: ${r.deadline||'—'} · #${r.displayNumber||r.id}</div>
     </div>`;
   };
 
@@ -2025,7 +2089,7 @@ function showWorkerHistory(workerId, workerName) {
     return `<div class="monitor-task ${over?'monitor-task-overdue':''}" style="border-left-color:${borderColor}">
       <div style="display:flex;justify-content:space-between"><div style="font-weight:500">📍 ${addr}</div>${sb}</div>
       <div class="monitor-task-type">${getTypeIcon(r.type)} ${r.type}${r.desc?' — '+r.desc.slice(0,60):''}</div>
-      <div style="font-size:11px;color:var(--muted)">Подана: ${r.created||'—'} · Срок: ${r.deadline||'—'} · #${r.id}</div>
+      <div style="font-size:11px;color:var(--muted)">Подана: ${r.created||'—'} · Срок: ${r.deadline||'—'} · #${r.displayNumber||r.id}</div>
       ${r.closedBy?`<div style="font-size:11px;color:var(--done)">Закрыл: ${r.closedBy}</div>`:''}
     </div>`;
   }).join('') || '<div style="color:var(--muted);font-size:13px;text-align:center;padding:20px">Заявок нет</div>';
@@ -2165,14 +2229,14 @@ function searchHistory() {
       <tbody>${results.map(r=>{
         const worker=DB.users.find(u=>u.id===r.assignee);
         const sb=r.status==='Новая'?`<span class="badge badge-new">● Новая</span>`:r.status==='В работе'?`<span class="badge badge-inprog">● В работе</span>`:`<span class="badge badge-done">✓ Выполнена${r.closedBy?' ('+r.closedBy+')':''}</span>`;
-        return `<tr><td style="color:var(--muted);font-size:12px">#${r.id}</td><td><div style="font-weight:500">${r.name}</div><div style="font-size:11px;color:var(--muted)">${r.phone||''}</div></td><td>${r.apart||'—'}</td><td><span class="type-badge">${getTypeIcon(r.type)} ${r.type}</span></td><td style="font-size:12px;color:var(--muted)">${r.desc||'—'}</td><td>${worker?worker.name:'—'}</td><td style="font-size:11px;color:var(--muted)">${r.created||'—'}</td><td>${sb}</td></tr>`;
+        return `<tr><td style="color:var(--muted);font-size:12px">#${r.displayNumber||r.id}</td><td><div style="font-weight:500">${r.name}</div><div style="font-size:11px;color:var(--muted)">${r.phone||''}</div></td><td>${r.apart||'—'}</td><td><span class="type-badge">${getTypeIcon(r.type)} ${r.type}</span></td><td style="font-size:12px;color:var(--muted)">${r.desc||'—'}</td><td>${worker?worker.name:'—'}</td><td style="font-size:11px;color:var(--muted)">${r.created||'—'}</td><td>${sb}</td></tr>`;
       }).join('')}</tbody></table>
     </div>
     <div class="request-cards">
       ${results.map(r=>{
         const worker=DB.users.find(u=>u.id===r.assignee);
         const sb=r.status==='Новая'?`<span class="badge badge-new">● Новая</span>`:r.status==='В работе'?`<span class="badge badge-inprog">● В работе</span>`:`<span class="badge badge-done">✓ Выполнена${r.closedBy?' ('+r.closedBy+')':''}</span>`;
-        return `<div class="request-card"><div class="rc-top"><div><div class="rc-name">${r.name}</div><div style="font-size:11px;color:var(--muted)">${r.phone||''}</div></div><div style="text-align:right"><div class="rc-id">#${r.id}</div><div style="margin-top:4px">${sb}</div></div></div>${r.apart?`<div style="font-size:12px;color:var(--muted);margin-bottom:4px">Кв. ${r.apart}</div>`:''}<div class="rc-meta"><span class="type-badge">${getTypeIcon(r.type)} ${r.type}</span>${worker?`<span style="font-size:12px;color:var(--muted)">${worker.name}</span>`:''}</div>${r.desc?`<div class="rc-desc">💬 ${r.desc}</div>`:''}<div style="font-size:11px;color:var(--muted)">${r.created||'—'}</div></div>`;
+        return `<div class="request-card"><div class="rc-top"><div><div class="rc-name">${r.name}</div><div style="font-size:11px;color:var(--muted)">${r.phone||''}</div></div><div style="text-align:right"><div class="rc-id">#${r.displayNumber||r.id}</div><div style="margin-top:4px">${sb}</div></div></div>${r.apart?`<div style="font-size:12px;color:var(--muted);margin-bottom:4px">Кв. ${r.apart}</div>`:''}<div class="rc-meta"><span class="type-badge">${getTypeIcon(r.type)} ${r.type}</span>${worker?`<span style="font-size:12px;color:var(--muted)">${worker.name}</span>`:''}</div>${r.desc?`<div class="rc-desc">💬 ${r.desc}</div>`:''}<div style="font-size:11px;color:var(--muted)">${r.created||'—'}</div></div>`;
       }).join('')}
     </div>`;
 }
