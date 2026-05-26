@@ -1702,10 +1702,10 @@ async function initMonitorMap() {
   }, 200);
 }
 
-// Возвращает координаты дома: сначала из самой базы (если расставлено вручную),
-// иначе из локального кеша, иначе пытается Nominatim (один запрос, мягкая обработка ошибок).
+// Возвращает координаты дома из самой базы (расставлены вручную через «Режим расстановки»).
+// Если адрес ещё не расставлен — возвращает null, и маркер просто не рисуется
+// (адрес попадёт в список нерасставленных, доступный Владельцу в режиме редактирования).
 async function geocodeAddress(addrOrStreet, house) {
-  // Поддержка двух форм вызова — для совместимости со старым кодом
   let addr;
   if (typeof addrOrStreet === 'object' && addrOrStreet !== null) {
     addr = addrOrStreet;
@@ -1715,19 +1715,6 @@ async function geocodeAddress(addrOrStreet, house) {
   if (typeof addr.lat === 'number' && typeof addr.lng === 'number') {
     return [addr.lat, addr.lng];
   }
-  const key = `${addr.street} ${addr.house}`;
-  if (_geocodeCache[key]) return _geocodeCache[key];
-  try {
-    const query = encodeURIComponent(`${addr.street} ${addr.house}, Белгород, Россия`);
-    const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1`);
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (data && data[0]) {
-      const coords = [parseFloat(data[0].lat), parseFloat(data[0].lon)];
-      _geocodeCache[key] = coords;
-      return coords;
-    }
-  } catch(e) {}
   return null;
 }
 
