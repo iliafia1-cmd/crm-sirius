@@ -168,6 +168,10 @@
     cursor: pointer; transition: opacity 0.2s; letter-spacing: 0.3px; margin-top: 8px;
   }
   .btn-primary:hover { opacity: 0.85; }
+  .btn-primary:disabled, .btn-primary[disabled] {
+    background: #2a2f45; color: #6b7294; cursor: not-allowed; opacity: 1;
+  }
+  .btn-primary:disabled:hover, .btn-primary[disabled]:hover { opacity: 1; }
   .login-error { color: var(--danger); font-size: 13px; margin-top: 12px; display: none; }
 
   #app { display: none; min-height: 100vh; }
@@ -834,6 +838,14 @@ function enableLoginForm() {
   if (btn) btn.disabled = false;
   if (loading) loading.style.display = 'none';
 }
+
+// Безусловная страховка: через 2.5 секунды после открытия страницы форма входа точно
+// должна быть рабочей. Даже если Firebase не загрузился (нет интернета, блокировка,
+// сбой) — пользователь хотя бы увидит честное сообщение «Загружаем базу…» в doLogin,
+// а не зависшую кнопку.
+setTimeout(() => {
+  enableLoginForm();
+}, 2500);
 
 function doLogin() {
   // База ещё не загружена — отказ с понятным сообщением вместо «неверный пароль»
