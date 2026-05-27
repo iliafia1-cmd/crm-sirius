@@ -398,7 +398,8 @@
       <div class="field-label">Пароль</div>
       <input class="field-input" id="passInput" type="password" placeholder="Введите пароль">
     </div>
-    <button class="btn-primary" onclick="doLogin()">Войти</button>
+    <button class="btn-primary" id="loginBtn" onclick="doLogin()" disabled>Войти</button>
+    <div id="loginLoading" style="font-size:12px;color:var(--muted);margin-top:10px;text-align:center">Загружаем базу данных…</div>
     <div class="login-error" id="loginError">Неверный логин или пароль</div>
   </div>
 </div>
@@ -764,6 +765,7 @@ async function initDB() {
     } catch(e) {}
     showLoadingScreen(false);
     updateOnlineStatus();
+    enableLoginForm();
     return;
   }
   if (window._fbInit) {
@@ -777,6 +779,7 @@ async function initDB() {
     try { localStorage.setItem('crm_sirius_cache', JSON.stringify(DB)); } catch(e) {}
   }
   showLoadingScreen(false);
+  enableLoginForm();
   updateOnlineStatus();
 }
 
@@ -824,11 +827,31 @@ let filterAssignee = 'all';
 let statCardFilter = null; // 'Новая','В работе','Выполнена','overdue'
 
 // ========== AUTH ==========
+// Включить форму логина после загрузки базы. Защищает от попытки войти, пока DB.users пустой.
+function enableLoginForm() {
+  const btn = document.getElementById('loginBtn');
+  const loading = document.getElementById('loginLoading');
+  if (btn) btn.disabled = false;
+  if (loading) loading.style.display = 'none';
+}
+
 function doLogin() {
+  // База ещё не загружена — отказ с понятным сообщением вместо «неверный пароль»
+  if (!DB || !DB.users || !DB.users.length) {
+    const err = document.getElementById('loginError');
+    err.textContent = 'Загружаем базу данных, подождите 1-2 секунды…';
+    err.style.display = 'block';
+    return;
+  }
   const login = document.getElementById('loginInput').value.trim();
   const pass = document.getElementById('passInput').value;
   const user = DB.users.find(u => u.login === login && u.pass === pass);
-  if (!user) { document.getElementById('loginError').style.display = 'block'; return; }
+  if (!user) {
+    const err = document.getElementById('loginError');
+    err.textContent = 'Неверный логин или пароль';
+    err.style.display = 'block';
+    return;
+  }
   currentUser = {...user}; // copy so we have all fields including subordinates
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
