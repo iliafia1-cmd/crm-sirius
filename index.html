@@ -24,7 +24,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;600;700&family=Golos+Text:wght@400;500;600&display=swap" rel="stylesheet">
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { getFirestore, doc, getDoc, setDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
   const firebaseConfig = {
     apiKey: "AIzaSyB9likr1eN1BmI0iQEJXsrp7oJxEvDE-UY",
     authDomain: "crm-sirius.firebaseapp.com",
@@ -50,6 +50,24 @@
       if (!snap.exists()) { await setDoc(DB_DOC, JSON.parse(JSON.stringify(defaultData))); return defaultData; }
       return snap.data();
     } catch(e) { console.error('Firebase init error:', e); return defaultData; }
+  };
+
+  // === Фото-вложения: каждое фото — отдельный документ в коллекции photos ===
+  window._fbSavePhoto = async function(photoId, dataUrl, meta) {
+    try {
+      await setDoc(doc(fbDb, 'photos', photoId), { data: dataUrl, ...meta });
+      return true;
+    } catch(e) { console.error('Photo save error:', e); return false; }
+  };
+  window._fbGetPhoto = async function(photoId) {
+    try {
+      const snap = await getDoc(doc(fbDb, 'photos', photoId));
+      return snap.exists() ? snap.data() : null;
+    } catch(e) { console.error('Photo get error:', e); return null; }
+  };
+  window._fbDeletePhoto = async function(photoId) {
+    try { await deleteDoc(doc(fbDb, 'photos', photoId)); return true; }
+    catch(e) { console.error('Photo delete error:', e); return false; }
   };
 
   const ONESIGNAL_APP_ID = "21e63862-1934-4bd1-9e55-1b67fb38c87d";
@@ -687,10 +705,24 @@
     <div id="descModalInfo" style="font-size:13px;color:var(--muted);margin-bottom:10px"></div>
     <div class="field-label" style="margin-bottom:8px">Описание (можно дополнять и исправлять)</div>
     <textarea class="field-input" id="descEditText" rows="5" style="width:100%;resize:vertical"></textarea>
+
+    <div class="field-label" style="margin:14px 0 8px">📷 Фото выполнения (до 5)</div>
+    <div id="descPhotos" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px"></div>
+    <input type="file" id="descPhotoInput" accept="image/*" multiple style="display:none" onchange="handlePhotoSelect(event,'desc')">
+    <button class="action-btn" type="button" onclick="document.getElementById('descPhotoInput').click()" style="padding:8px 14px">📎 Прикрепить фото</button>
+    <div id="descPhotoStatus" style="font-size:11px;color:var(--muted);margin-top:6px"></div>
+
     <div class="modal-actions">
-      <button class="btn-cancel" onclick="closeModal('descModal')">Отмена</button>
-      <button class="btn-save" onclick="saveDescEdit()">Сохранить</button>
+      <button class="btn-cancel" onclick="closeModal('descModal')">Закрыть</button>
+      <button class="btn-save" onclick="saveDescEdit()">Сохранить описание</button>
     </div>
+  </div>
+</div>
+
+<!-- Просмотр фото на весь экран -->
+<div class="modal-overlay" id="photoViewModal" onclick="closeModal('photoViewModal')">
+  <div style="max-width:95vw;max-height:95vh;display:flex;align-items:center;justify-content:center">
+    <img id="photoViewImg" style="max-width:95vw;max-height:95vh;border-radius:8px" src="">
   </div>
 </div>
 
@@ -1127,6 +1159,7 @@ function renderRequests() {
     const addrLine = r.street ? `${r.street}, д.${r.house}` : (r.address||'—');
     const subLine = [r.entrance?`Подъезд ${r.entrance}`:'', r.floor?`эт.${r.floor}`:'', r.apart?`кв.${r.apart}`:''].filter(Boolean).join(', ');
     const descLine = r.desc ? `<div style="font-size:11px;color:var(--muted);margin-top:3px;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${r.desc}">💬 ${r.desc}</div>` : '';
+    const photoLine = (Array.isArray(r.photos) && r.photos.length) ? `<div style="font-size:11px;color:var(--accent2);margin-top:3px">📷 Фото: ${r.photos.length}</div>` : '';
     // Дата+автор для «Поступила» и «Принята в работу»
     const createdCell = `<div>${r.created||'—'}</div>${r.createdBy?`<div style="font-size:10px;color:var(--muted);margin-top:2px">${r.createdBy}</div>`:''}`;
     const startedCell = r.startedAt
@@ -1141,9 +1174,8 @@ function renderRequests() {
       if (r.assignee === currentUser.id || mySubordinates.includes(r.assignee) || !r.assignee)
         actions += `<button class="action-btn" onclick="openReassignModal(${r.id})">↔ Назначить</button>`;
     }
-    // Редактирование только описания — для ИТР и работников
-    if (currentUser.role==='itr' || currentUser.role==='worker')
-      actions += `<button class="action-btn" onclick="openDescEdit(${r.id})">💬 Описание</button>`;
+    // Описание + фото — доступно всем ролям (любой участник может прикрепить фото)
+    actions += `<button class="action-btn" onclick="openDescEdit(${r.id})">💬 Фото</button>`;
     if (currentUser.role==='worker' && r.status!=='Выполнена') {
       if (r.status==='Новая') actions += `<button class="action-btn" onclick="quickStatus(${r.id},'В работе')">▶ Начать</button>`;
       if (r.status==='В работе') actions += `<button class="action-btn" onclick="quickStatus(${r.id},'Выполнена')">✓ Готово</button>`;
@@ -1159,7 +1191,7 @@ function renderRequests() {
       <td style="color:var(--muted);font-size:12px">#${r.displayNumber||r.id}</td>
       <td><div style="font-weight:500">${r.name}</div><div style="font-size:11px;color:var(--muted)">${r.phone}</div></td>
       <td><div>${addrLine}</div><div style="font-size:11px;color:var(--muted)">${subLine}</div></td>
-      <td><span class="type-badge">${getTypeIcon(r.type)||''} ${r.type}</span>${descLine}</td>
+      <td><span class="type-badge">${getTypeIcon(r.type)||''} ${r.type}</span>${descLine}${photoLine}</td>
       <td>${worker?worker.name:'—'}</td>
       <td style="font-size:11px;color:var(--muted)">${createdCell}</td>
       <td style="font-size:11px;color:var(--muted)">${startedCell}</td>
@@ -1188,9 +1220,8 @@ function renderRequests() {
         if (r.status==='В работе') actions += `<button class="action-btn" style="flex:1;text-align:center;padding:8px" onclick="quickStatus(${r.id},'Выполнена')">✓ Выполнено</button>`;
       }
     }
-    // Редактирование описания — для ИТР и работников
-    if (currentUser.role==='itr' || currentUser.role==='worker')
-      actions += `<button class="action-btn" style="flex:1;text-align:center;padding:8px" onclick="openDescEdit(${r.id})">💬 Описание</button>`;
+    // Описание + фото — доступно всем ролям
+    actions += `<button class="action-btn" style="flex:1;text-align:center;padding:8px" onclick="openDescEdit(${r.id})">💬 Фото</button>`;
     if (currentUser.role==='worker' && r.status!=='Выполнена') {
       if (r.status==='Новая') actions += `<button class="action-btn" style="flex:1;text-align:center;padding:8px" onclick="quickStatus(${r.id},'В работе')">▶ Начать</button>`;
       if (r.status==='В работе') actions += `<button class="action-btn" style="flex:1;text-align:center;padding:8px" onclick="quickStatus(${r.id},'Выполнена')">✓ Выполнено</button>`;
@@ -1339,28 +1370,149 @@ function changePriority(requestId, direction) {
 }
 function setFilter(s) { filterStatus = s; statCardFilter = null; renderRequests(); }
 function setFilterAssignee(v) { filterAssignee = v; renderRequests(); }
+// Сжатие фото в браузере до ~300 КБ. Возвращает dataURL (base64 JPEG).
+function compressImage(file, maxKB) {
+  maxKB = maxKB || 300;
+  return new Promise((resolve, reject) => {
+    if (!file.type.startsWith('image/')) { reject(new Error('Это не изображение')); return; }
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        // Ограничиваем максимальную сторону 1600px
+        let { width, height } = img;
+        const MAX = 1600;
+        if (width > MAX || height > MAX) {
+          if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
+          else { width = Math.round(width * MAX / height); height = MAX; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        // Подбираем качество, чтобы уложиться в maxKB
+        let q = 0.85;
+        let dataUrl = canvas.toDataURL('image/jpeg', q);
+        while (dataUrl.length / 1024 > maxKB && q > 0.3) {
+          q -= 0.1;
+          dataUrl = canvas.toDataURL('image/jpeg', q);
+        }
+        resolve(dataUrl);
+      };
+      img.onerror = () => reject(new Error('Не удалось открыть изображение'));
+      img.src = e.target.result;
+    };
+    reader.onerror = () => reject(new Error('Не удалось прочитать файл'));
+    reader.readAsDataURL(file);
+  });
+}
+
 // Редактирование только описания — доступно ИТР и работникам
 let editingDescId = null;
+let _descPhotoIds = [];
+
 function openDescEdit(id) {
   const r = DB.requests.find(r=>r.id===id);
   if (!r) return;
   editingDescId = id;
+  _descPhotoIds = Array.isArray(r.photos) ? r.photos.slice() : [];
   const addr = r.street ? `${r.street}, д.${r.house}` : (r.address||'');
   document.getElementById('descModalInfo').innerHTML =
     `Заявка #${r.displayNumber||r.id} · ${addr}${r.apart?' кв.'+r.apart:''}`;
   document.getElementById('descEditText').value = r.desc || '';
+  document.getElementById('descPhotoStatus').textContent = '';
   document.getElementById('descModal').classList.add('open');
+  renderDescPhotos();
 }
+
+async function renderDescPhotos() {
+  const box = document.getElementById('descPhotos');
+  if (!_descPhotoIds.length) { box.innerHTML = '<span style="font-size:12px;color:var(--muted)">Фото пока нет</span>'; return; }
+  box.innerHTML = _descPhotoIds.map(pid => `
+    <div style="position:relative;width:70px;height:70px" data-pid="${pid}">
+      <div class="ph-thumb" style="width:70px;height:70px;border-radius:8px;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--muted)">…</div>
+      <button onclick="removeDescPhoto('${pid}')" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;border:none;background:var(--danger);color:#fff;font-size:12px;cursor:pointer;line-height:1">✕</button>
+    </div>
+  `).join('');
+  for (const pid of _descPhotoIds) {
+    const photo = await window._fbGetPhoto(pid);
+    const wrap = box.querySelector(`[data-pid="${pid}"] .ph-thumb`);
+    if (wrap && photo && photo.data) {
+      wrap.outerHTML = `<img src="${photo.data}" onclick="viewPhoto('${pid}')" style="width:70px;height:70px;object-fit:cover;border-radius:8px;cursor:pointer" title="Открыть">`;
+    } else if (wrap) {
+      wrap.textContent = '✕';
+    }
+  }
+}
+
+async function handlePhotoSelect(event, mode) {
+  const files = Array.from(event.target.files || []);
+  event.target.value = '';
+  if (!files.length) return;
+  if (!_isOnline) { showToast('Нет интернета — фото нельзя загрузить','error'); return; }
+  const statusEl = document.getElementById('descPhotoStatus');
+  const FREE = 5 - _descPhotoIds.length;
+  if (FREE <= 0) { showToast('Уже прикреплено 5 фото — это максимум','error'); return; }
+  const toProcess = files.slice(0, FREE);
+  if (files.length > FREE) showToast(`Можно добавить ещё ${FREE} — лишние пропущены`,'error');
+
+  let done = 0;
+  for (const file of toProcess) {
+    statusEl.textContent = `Загрузка ${done+1} из ${toProcess.length}…`;
+    try {
+      const dataUrl = await compressImage(file, 300);
+      const pid = 'ph_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
+      const ok = await window._fbSavePhoto(pid, dataUrl, {
+        uploadedBy: currentUser.name,
+        uploadedAt: nowDT(),
+        requestId: editingDescId
+      });
+      if (ok) { _descPhotoIds.push(pid); done++; }
+      else showToast('Одно фото не загрузилось','error');
+    } catch(e) {
+      showToast('Ошибка: ' + e.message, 'error');
+    }
+  }
+  statusEl.textContent = done ? `Загружено: ${done}` : '';
+  renderDescPhotos();
+  persistDescPhotos();
+}
+
+function removeDescPhoto(pid) {
+  _descPhotoIds = _descPhotoIds.filter(x => x !== pid);
+  if (window._fbDeletePhoto) window._fbDeletePhoto(pid);
+  renderDescPhotos();
+  persistDescPhotos();
+  showToast('Фото удалено','success');
+}
+
+function persistDescPhotos() {
+  const r = DB.requests.find(r=>r.id===editingDescId);
+  if (!r) return;
+  r.photos = _descPhotoIds.slice();
+  saveData();
+  renderRequests();
+}
+
+function viewPhoto(pid) {
+  window._fbGetPhoto(pid).then(photo => {
+    if (photo && photo.data) {
+      document.getElementById('photoViewImg').src = photo.data;
+      document.getElementById('photoViewModal').classList.add('open');
+    }
+  });
+}
+
 function saveDescEdit() {
   if (!editingDescId) return;
   if (!_isOnline) { showToast('Нет интернета — изменения недоступны офлайн','error'); return; }
   const r = DB.requests.find(r=>r.id===editingDescId);
   if (!r) return;
   r.desc = document.getElementById('descEditText').value.trim();
+  r.photos = _descPhotoIds.slice();
   saveData();
   closeModal('descModal');
   renderRequests();
-  showToast('Описание сохранено','success');
+  showToast('Сохранено','success');
   editingDescId = null;
 }
 
