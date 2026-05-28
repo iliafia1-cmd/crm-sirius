@@ -1207,11 +1207,11 @@ function renderRequests() {
   }
   if (currentUser.role === 'owner' || currentUser.role === 'secretary') {
     const workers = DB.users
-      .filter(u => (u.role==='worker' || u.role==='itr') && !u.fired)
+      .filter(u => (u.role==='worker' || u.role==='itr' || u.role==='secretary') && !u.fired)
       .sort((a,b) => a.name.localeCompare(b.name, 'ru'));
     fhtml += `<select class="filter-select" onchange="setFilterAssignee(this.value)">
       <option value="all">Все исполнители</option>
-      ${workers.map(w=>`<option value="${w.id}" ${filterAssignee==w.id?'selected':''}>${w.name}${w.role==='itr'?' (ИТР)':''}</option>`).join('')}
+      ${workers.map(w=>`<option value="${w.id}" ${filterAssignee==w.id?'selected':''}>${w.name}${w.role==='itr'?' (ИТР)':''}${w.role==='secretary'?' (Секретарь)':''}</option>`).join('')}
     </select>`;
   }
   filters.innerHTML = fhtml;
@@ -1659,7 +1659,7 @@ function updateAssigneeByType(selectedId) {
   const type = document.getElementById('fType').value;
   const sel = document.getElementById('fAssignee');
   const assigned = DB.categoryAssignments[type] || [];
-  const workers = DB.users.filter(u => (u.role==='worker' || u.role==='itr') && !u.fired);
+  const workers = DB.users.filter(u => (u.role==='worker' || u.role==='itr' || u.role==='secretary') && !u.fired);
   const inCat = workers.filter(w => assigned.includes(w.id));
   const outCat = workers.filter(w => !assigned.includes(w.id));
   let html = `<option value="">— Не назначен —</option>`;
