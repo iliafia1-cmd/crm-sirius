@@ -1058,7 +1058,7 @@ function renderRequests() {
 
   // New request button
   document.getElementById('btnNewRequest').style.display =
-    (currentUser.role==='owner' || currentUser.role==='secretary') ? '' : 'none';
+    (currentUser.role==='owner' || currentUser.role==='secretary' || currentUser.role==='itr') ? '' : 'none';
 
   // Filters row
   const filters = document.getElementById('filtersRow');
