@@ -528,6 +528,26 @@
       <div id="historyResult"></div>
     </div>
 
+    <!-- БАЗА ЗНАНИЙ -->
+    <div class="tab-pane" id="tab-knowledge">
+      <div class="section-header">
+        <div class="section-title">📚 База знаний</div>
+        <button class="btn-add" onclick="openKnowledgeModal()">+ Добавить статью</button>
+      </div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:16px">Постоянная информация для жильцов. В будущем ИИ-ассистент будет отвечать на вопросы на основе этих статей.</div>
+      <div id="knowledgeList"></div>
+    </div>
+
+    <!-- ОПЕРАТИВНЫЕ НОВОСТИ -->
+    <div class="tab-pane" id="tab-news">
+      <div class="section-header">
+        <div class="section-title">📢 Оперативные новости</div>
+        <button class="btn-add" onclick="openNewsModal()">+ Добавить новость</button>
+      </div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:16px">Временная информация (аварии, отключения). Активные новости помогут ассистенту отвечать жильцам и снижать число лишних заявок.</div>
+      <div id="newsList"></div>
+    </div>
+
     <!-- ОБЪЕКТЫ И НАСТРОЙКИ -->
     <div class="tab-pane" id="tab-settings">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
@@ -727,6 +747,45 @@
   </div>
 </div>
 
+<!-- Модалка статьи базы знаний -->
+<div class="modal-overlay" id="knowledgeModal">
+  <div class="modal" style="width:480px">
+    <div class="modal-title" id="knowledgeModalTitle">Новая статья</div>
+    <div class="field-label" style="margin-bottom:6px">Заголовок</div>
+    <input class="field-input" id="kTitle" placeholder="Например: Передача показаний счётчиков" style="width:100%;margin-bottom:12px">
+    <div class="field-label" style="margin-bottom:6px">Текст</div>
+    <textarea class="field-input" id="kText" rows="6" style="width:100%;resize:vertical"></textarea>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('knowledgeModal')">Отмена</button>
+      <button class="btn-save" onclick="saveKnowledge()">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Модалка новости -->
+<div class="modal-overlay" id="newsModal">
+  <div class="modal" style="width:480px">
+    <div class="modal-title" id="newsModalTitle">Новая новость</div>
+    <div class="field-label" style="margin-bottom:6px">Заголовок</div>
+    <input class="field-input" id="nTitle" placeholder="Например: Отключение воды" style="width:100%;margin-bottom:12px">
+    <div class="field-label" style="margin-bottom:6px">Текст</div>
+    <textarea class="field-input" id="nText" rows="4" style="width:100%;resize:vertical;margin-bottom:12px"></textarea>
+    <div class="field-label" style="margin-bottom:6px">Область действия</div>
+    <select class="field-select" id="nScope" onchange="toggleNewsAddress()" style="width:100%;margin-bottom:12px">
+      <option value="all">Для всех домов</option>
+      <option value="address">Для конкретного дома</option>
+    </select>
+    <div id="nAddressRow" style="display:none;gap:10px;margin-bottom:12px">
+      <select class="field-select" id="nStreet" onchange="updateNewsHouseList()" style="flex:1"></select>
+      <select class="field-select" id="nHouse" style="width:120px"></select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('newsModal')">Отмена</button>
+      <button class="btn-save" onclick="saveNews()">Сохранить</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -805,7 +864,14 @@ const DEFAULT_DATA = {
     { id: 2, name: 'Иванов Николай', phone: '+7 900 222 33 44', street: 'пр. Мира', house: '5', entrance: '1', floor: '7', apart: '', type: 'Электрика', desc: 'Не работает розетка в комнате', assignee: 4, deadline: '2026-05-19', status: 'Новая', created: '2026-05-18' },
     { id: 3, name: 'Соколова Елена', phone: '+7 900 333 44 55', street: 'ул. Садовая', house: '8', entrance: '3', floor: '2', apart: '', type: 'Уборка/Дворник', desc: 'Мусор в подъезде', assignee: 5, deadline: '2026-05-15', status: 'Выполнена', created: '2026-05-14' },
   ],
-  nextId: { user: 6, request: 4, address: 26, workType: 7 }
+  knowledge: [
+    { id: 1, title: 'Передача показаний счётчиков', text: 'Показания счётчиков воды и электроэнергии можно передать до 25 числа каждого месяца через личный кабинет или по телефону диспетчерской.' },
+    { id: 2, title: 'Аварийная служба', text: 'Аварийная служба работает круглосуточно. При прорыве трубы, отсутствии электричества или других аварийных ситуациях звоните по телефону диспетчерской.' },
+  ],
+  news: [
+    { id: 1, title: 'Плановое отключение горячей воды', text: 'С 1 по 14 июня плановое отключение горячей воды в связи с подготовкой к отопительному сезону.', scope: 'all', street: '', house: '', active: true, created: '2026-05-26' },
+  ],
+  nextId: { user: 6, request: 4, address: 26, workType: 7, knowledge: 3, news: 2 }
 };
 
 let DB = JSON.parse(JSON.stringify(DEFAULT_DATA));
@@ -992,6 +1058,8 @@ function buildNav() {
   if (currentUser.role === 'owner' || currentUser.role === 'secretary') {
     tabs.push({ id:'monitor', label:'👷 Онлайн' });
     tabs.push({ id:'history', label:'📋 История' });
+    tabs.push({ id:'knowledge', label:'📚 База знаний' });
+    tabs.push({ id:'news', label:'📢 Новости' });
   }
   if (currentUser.role === 'itr') {
     tabs.push({ id:'monitor', label:'👷 Моя бригада' });
@@ -1023,6 +1091,8 @@ function switchTab(id) {
   if (id==='categories') renderCategories();
   if (id==='settings') renderSettings();
   if (id==='history') initHistoryTab();
+  if (id==='knowledge') renderKnowledge();
+  if (id==='news') renderNews();
   if (id==='monitor') { 
     renderMonitor(); 
     startMonitorTimer();
@@ -2471,6 +2541,142 @@ function monitorTouchEnd(e, requestId, workerId) {
 }
 
 // ========== HISTORY ==========
+// ========== БАЗА ЗНАНИЙ ==========
+let editingKnowledgeId = null;
+function renderKnowledge() {
+  const box = document.getElementById('knowledgeList');
+  const list = DB.knowledge || [];
+  if (!list.length) { box.innerHTML = `<div class="empty"><div class="empty-icon">📚</div><div class="empty-text">Статей пока нет</div></div>`; return; }
+  box.innerHTML = list.map(k => `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+        <div style="font-weight:600;font-size:15px;color:var(--text)">${k.title}</div>
+        <div style="white-space:nowrap">
+          <button class="action-btn" onclick="openKnowledgeModal(${k.id})">✏ Изм.</button>
+          <button class="action-btn danger" onclick="deleteKnowledge(${k.id})">✕</button>
+        </div>
+      </div>
+      <div style="font-size:13px;color:var(--muted);margin-top:8px;white-space:pre-wrap">${k.text}</div>
+    </div>
+  `).join('');
+}
+function openKnowledgeModal(id) {
+  editingKnowledgeId = id || null;
+  const k = id ? (DB.knowledge||[]).find(x=>x.id===id) : null;
+  document.getElementById('knowledgeModalTitle').textContent = k ? 'Редактировать статью' : 'Новая статья';
+  document.getElementById('kTitle').value = k ? k.title : '';
+  document.getElementById('kText').value = k ? k.text : '';
+  document.getElementById('knowledgeModal').classList.add('open');
+}
+function saveKnowledge() {
+  if (!_isOnline) { showToast('Нет интернета','error'); return; }
+  const title = document.getElementById('kTitle').value.trim();
+  const text = document.getElementById('kText').value.trim();
+  if (!title || !text) { showToast('Заполните заголовок и текст','error'); return; }
+  if (!DB.knowledge) DB.knowledge = [];
+  if (editingKnowledgeId) {
+    const k = DB.knowledge.find(x=>x.id===editingKnowledgeId);
+    if (k) { k.title = title; k.text = text; }
+  } else {
+    if (!DB.nextId.knowledge) DB.nextId.knowledge = 1;
+    DB.knowledge.push({ id: DB.nextId.knowledge++, title, text });
+  }
+  saveData(); closeModal('knowledgeModal'); renderKnowledge();
+  showToast('Сохранено','success');
+}
+function deleteKnowledge(id) {
+  if (!confirm('Удалить статью?')) return;
+  DB.knowledge = (DB.knowledge||[]).filter(x=>x.id!==id);
+  saveData(); renderKnowledge(); showToast('Удалено','success');
+}
+
+// ========== ОПЕРАТИВНЫЕ НОВОСТИ ==========
+let editingNewsId = null;
+function renderNews() {
+  const box = document.getElementById('newsList');
+  const list = DB.news || [];
+  if (!list.length) { box.innerHTML = `<div class="empty"><div class="empty-icon">📢</div><div class="empty-text">Новостей пока нет</div></div>`; return; }
+  const sorted = list.slice().sort((a,b)=>(b.active?1:0)-(a.active?1:0));
+  box.innerHTML = sorted.map(n => {
+    const scopeLabel = n.scope==='address' ? `${n.street}, д.${n.house}` : 'Все дома';
+    const badge = n.active
+      ? `<span class="badge badge-inprog">● Активна</span>`
+      : `<span class="badge badge-cancelled">○ Снята</span>`;
+    return `
+    <div style="background:var(--surface);border:1px solid ${n.active?'var(--inprog)':'var(--border)'};border-radius:12px;padding:16px;margin-bottom:12px;opacity:${n.active?1:0.6}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+        <div>
+          <div style="font-weight:600;font-size:15px;color:var(--text)">${n.title}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px">📍 ${scopeLabel} · ${n.created||''}</div>
+        </div>
+        <div>${badge}</div>
+      </div>
+      <div style="font-size:13px;color:var(--muted);margin-top:8px;white-space:pre-wrap">${n.text}</div>
+      <div style="margin-top:10px;white-space:nowrap">
+        <button class="action-btn" onclick="toggleNews(${n.id})">${n.active?'🚫 Снять':'✓ Активировать'}</button>
+        <button class="action-btn" onclick="openNewsModal(${n.id})">✏ Изм.</button>
+        <button class="action-btn danger" onclick="deleteNews(${n.id})">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+function openNewsModal(id) {
+  editingNewsId = id || null;
+  const n = id ? (DB.news||[]).find(x=>x.id===id) : null;
+  document.getElementById('newsModalTitle').textContent = n ? 'Редактировать новость' : 'Новая новость';
+  document.getElementById('nTitle').value = n ? n.title : '';
+  document.getElementById('nText').value = n ? n.text : '';
+  document.getElementById('nScope').value = n ? n.scope : 'all';
+  const streets = [...new Set((DB.addresses||[]).map(a=>a.street))];
+  document.getElementById('nStreet').innerHTML = `<option value="">— Улица —</option>` + streets.map(s=>`<option value="${s}" ${n&&n.street===s?'selected':''}>${s}</option>`).join('');
+  updateNewsHouseList();
+  if (n && n.scope==='address') { document.getElementById('nHouse').value = n.house; }
+  toggleNewsAddress();
+  document.getElementById('newsModal').classList.add('open');
+}
+function toggleNewsAddress() {
+  const scope = document.getElementById('nScope').value;
+  document.getElementById('nAddressRow').style.display = scope==='address' ? 'flex' : 'none';
+}
+function updateNewsHouseList() {
+  const street = document.getElementById('nStreet').value;
+  const houses = (DB.addresses||[]).filter(a=>a.street===street).map(a=>a.house);
+  document.getElementById('nHouse').innerHTML = `<option value="">— Дом —</option>` + houses.map(h=>`<option value="${h}">${h}</option>`).join('');
+}
+function saveNews() {
+  if (!_isOnline) { showToast('Нет интернета','error'); return; }
+  const title = document.getElementById('nTitle').value.trim();
+  const text = document.getElementById('nText').value.trim();
+  const scope = document.getElementById('nScope').value;
+  if (!title || !text) { showToast('Заполните заголовок и текст','error'); return; }
+  let street = '', house = '';
+  if (scope==='address') {
+    street = document.getElementById('nStreet').value;
+    house = document.getElementById('nHouse').value;
+    if (!street || !house) { showToast('Выберите дом','error'); return; }
+  }
+  if (!DB.news) DB.news = [];
+  if (editingNewsId) {
+    const n = DB.news.find(x=>x.id===editingNewsId);
+    if (n) { n.title=title; n.text=text; n.scope=scope; n.street=street; n.house=house; }
+  } else {
+    if (!DB.nextId.news) DB.nextId.news = 1;
+    const d = new Date();
+    DB.news.unshift({ id: DB.nextId.news++, title, text, scope, street, house, active: true, created: d.toLocaleDateString('ru-RU') });
+  }
+  saveData(); closeModal('newsModal'); renderNews();
+  showToast('Сохранено','success');
+}
+function toggleNews(id) {
+  const n = (DB.news||[]).find(x=>x.id===id);
+  if (n) { n.active = !n.active; saveData(); renderNews(); showToast(n.active?'Новость активна':'Новость снята','success'); }
+}
+function deleteNews(id) {
+  if (!confirm('Удалить новость?')) return;
+  DB.news = (DB.news||[]).filter(x=>x.id!==id);
+  saveData(); renderNews(); showToast('Удалено','success');
+}
+
 function initHistoryTab() {
   const streets = [...new Set((DB.addresses||[]).map(a=>a.street))];
   const sel = document.getElementById('hStreet');
