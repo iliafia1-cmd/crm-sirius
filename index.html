@@ -1176,7 +1176,7 @@ function renderRequests() {
         actions += `<button class="action-btn" onclick="openReassignModal(${r.id})">↔ Назначить</button>`;
     }
     // Описание + фото — доступно всем ролям (любой участник может прикрепить фото)
-    actions += `<button class="action-btn" onclick="openDescEdit(${r.id})">💬 Фото</button>`;
+    actions += `<button class="action-btn" onclick="openDescEdit(${r.id})">💬 Описание</button>`;
     if (currentUser.role==='worker' && r.status!=='Выполнена') {
       if (r.status==='Новая') actions += `<button class="action-btn" onclick="quickStatus(${r.id},'В работе')">▶ Начать</button>`;
       if (r.status==='В работе') actions += `<button class="action-btn" onclick="quickStatus(${r.id},'Выполнена')">✓ Готово</button>`;
@@ -1222,7 +1222,7 @@ function renderRequests() {
       }
     }
     // Описание + фото — доступно всем ролям
-    actions += `<button class="action-btn" style="flex:1;text-align:center;padding:8px" onclick="openDescEdit(${r.id})">💬 Фото</button>`;
+    actions += `<button class="action-btn" style="flex:1;text-align:center;padding:8px" onclick="openDescEdit(${r.id})">💬 Описание</button>`;
     if (currentUser.role==='worker' && r.status!=='Выполнена') {
       if (r.status==='Новая') actions += `<button class="action-btn" style="flex:1;text-align:center;padding:8px" onclick="quickStatus(${r.id},'В работе')">▶ Начать</button>`;
       if (r.status==='В работе') actions += `<button class="action-btn" style="flex:1;text-align:center;padding:8px" onclick="quickStatus(${r.id},'Выполнена')">✓ Выполнено</button>`;
