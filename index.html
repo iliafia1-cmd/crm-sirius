@@ -679,6 +679,19 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="descModal">
+  <div class="modal" style="width:440px">
+    <div class="modal-title">Описание заявки</div>
+    <div id="descModalInfo" style="font-size:13px;color:var(--muted);margin-bottom:10px"></div>
+    <div class="field-label" style="margin-bottom:8px">Описание (можно дополнять и исправлять)</div>
+    <textarea class="field-input" id="descEditText" rows="5" style="width:100%;resize:vertical"></textarea>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('descModal')">Отмена</button>
+      <button class="btn-save" onclick="saveDescEdit()">Сохранить</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -1114,6 +1127,9 @@ function renderRequests() {
       if (r.assignee === currentUser.id || mySubordinates.includes(r.assignee) || !r.assignee)
         actions += `<button class="action-btn" onclick="openReassignModal(${r.id})">↔ Назначить</button>`;
     }
+    // Редактирование только описания — для ИТР и работников
+    if (currentUser.role==='itr' || currentUser.role==='worker')
+      actions += `<button class="action-btn" onclick="openDescEdit(${r.id})">💬 Описание</button>`;
     if (currentUser.role==='worker' && r.status!=='Выполнена') {
       if (r.status==='Новая') actions += `<button class="action-btn" onclick="quickStatus(${r.id},'В работе')">▶ Начать</button>`;
       if (r.status==='В работе') actions += `<button class="action-btn" onclick="quickStatus(${r.id},'Выполнена')">✓ Готово</button>`;
@@ -1162,6 +1178,9 @@ function renderRequests() {
         if (r.status==='В работе') actions += `<button class="action-btn" style="flex:1;text-align:center;padding:8px" onclick="quickStatus(${r.id},'Выполнена')">✓ Выполнено</button>`;
       }
     }
+    // Редактирование описания — для ИТР и работников
+    if (currentUser.role==='itr' || currentUser.role==='worker')
+      actions += `<button class="action-btn" style="flex:1;text-align:center;padding:8px" onclick="openDescEdit(${r.id})">💬 Описание</button>`;
     if (currentUser.role==='worker' && r.status!=='Выполнена') {
       if (r.status==='Новая') actions += `<button class="action-btn" style="flex:1;text-align:center;padding:8px" onclick="quickStatus(${r.id},'В работе')">▶ Начать</button>`;
       if (r.status==='В работе') actions += `<button class="action-btn" style="flex:1;text-align:center;padding:8px" onclick="quickStatus(${r.id},'Выполнена')">✓ Выполнено</button>`;
@@ -1310,6 +1329,31 @@ function changePriority(requestId, direction) {
 }
 function setFilter(s) { filterStatus = s; statCardFilter = null; renderRequests(); }
 function setFilterAssignee(v) { filterAssignee = v; renderRequests(); }
+// Редактирование только описания — доступно ИТР и работникам
+let editingDescId = null;
+function openDescEdit(id) {
+  const r = DB.requests.find(r=>r.id===id);
+  if (!r) return;
+  editingDescId = id;
+  const addr = r.street ? `${r.street}, д.${r.house}` : (r.address||'');
+  document.getElementById('descModalInfo').innerHTML =
+    `Заявка #${r.displayNumber||r.id} · ${addr}${r.apart?' кв.'+r.apart:''}`;
+  document.getElementById('descEditText').value = r.desc || '';
+  document.getElementById('descModal').classList.add('open');
+}
+function saveDescEdit() {
+  if (!editingDescId) return;
+  if (!_isOnline) { showToast('Нет интернета — изменения недоступны офлайн','error'); return; }
+  const r = DB.requests.find(r=>r.id===editingDescId);
+  if (!r) return;
+  r.desc = document.getElementById('descEditText').value.trim();
+  saveData();
+  closeModal('descModal');
+  renderRequests();
+  showToast('Описание сохранено','success');
+  editingDescId = null;
+}
+
 function quickStatus(id, status) {
   const r = DB.requests.find(r=>r.id===id);
   if (!r) return;
