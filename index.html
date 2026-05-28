@@ -770,6 +770,7 @@ async function initDB() {
     showLoadingScreen(false);
     updateOnlineStatus();
     enableLoginForm();
+    tryAutoLogin();
     return;
   }
   if (window._fbInit) {
@@ -784,6 +785,7 @@ async function initDB() {
   }
   showLoadingScreen(false);
   enableLoginForm();
+  tryAutoLogin();
   updateOnlineStatus();
 }
 
@@ -864,6 +866,13 @@ function doLogin() {
     err.style.display = 'block';
     return;
   }
+  // Запоминаем вход на этом устройстве — чтобы не логиниться заново после обновления
+  try { localStorage.setItem('crm_sirius_session', String(user.id)); } catch(e) {}
+  enterApp(user);
+}
+
+// Войти в приложение под пользователем (общая логика для ручного и авто-входа)
+function enterApp(user) {
   currentUser = {...user}; // copy so we have all fields including subordinates
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
@@ -874,10 +883,28 @@ function doLogin() {
   }
   initApp();
 }
+
+// Попытка авто-входа по сохранённой сессии. Вызывается после загрузки базы.
+function tryAutoLogin() {
+  let savedId = null;
+  try { savedId = localStorage.getItem('crm_sirius_session'); } catch(e) {}
+  if (!savedId) return false;
+  if (!DB || !DB.users) return false;
+  const user = DB.users.find(u => String(u.id) === String(savedId) && !u.fired);
+  if (!user) {
+    // Пользователь удалён/уволен — чистим сессию
+    try { localStorage.removeItem('crm_sirius_session'); } catch(e) {}
+    return false;
+  }
+  enterApp(user);
+  return true;
+}
 document.getElementById('passInput').addEventListener('keydown', e => { if (e.key==='Enter') doLogin(); });
 document.getElementById('loginInput').addEventListener('keydown', e => { if (e.key==='Enter') doLogin(); });
 
 function doLogout() {
+  // Стираем сохранённую сессию — теперь снова потребуется логин/пароль
+  try { localStorage.removeItem('crm_sirius_session'); } catch(e) {}
   currentUser = null; statCardFilter = null;
   document.getElementById('app').style.display = 'none';
   document.getElementById('loginScreen').style.display = 'flex';
