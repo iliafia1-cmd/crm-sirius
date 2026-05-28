@@ -256,6 +256,7 @@
   .badge-new { background: rgba(79,124,255,0.15); color: var(--new); }
   .badge-inprog { background: rgba(245,166,35,0.15); color: var(--inprog); }
   .badge-done { background: rgba(0,212,170,0.15); color: var(--done); }
+  .badge-cancelled { background: rgba(150,150,160,0.18); color: #9aa1c2; }
   .type-badge { padding: 2px 8px; border-radius: 4px; font-size: 11px; background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
   .action-btn { padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); color: var(--muted); font-family: inherit; font-size: 11px; cursor: pointer; transition: all 0.15s; margin-right: 4px; }
   .action-btn:hover { border-color: var(--accent); color: var(--accent); }
@@ -579,6 +580,7 @@
           <option value="Новая">Новая</option>
           <option value="В работе">В работе</option>
           <option value="Выполнена">Выполнена</option>
+          <option value="Отменена заявителем">Отменена заявителем</option>
         </select>
       </div>
     </div>
@@ -700,6 +702,21 @@
 const TYPE_ICONS = { 'Сантехника':'🔧','Электрика':'⚡','Уборка/Дворник':'🧹','Лифты':'🛗','Общестроительные':'🏗️','Другое':'📋' };
 function getWorkTypes() { return (DB.workTypes||[]).map(w=>w.name); }
 function getTypeIcon(name) { const wt = (DB.workTypes||[]).find(w=>w.name===name); return wt ? wt.icon : (TYPE_ICONS[name]||'📋'); }
+
+// Единый бейдж статуса. opts.small — мелкий шрифт, opts.who — показывать closedBy
+function statusBadge(r, opts) {
+  opts = opts || {};
+  const fs = opts.small ? ' style="font-size:10px"' : '';
+  if (r.status === 'Новая') return `<span class="badge badge-new"${fs}>● Новая</span>`;
+  if (r.status === 'В работе') return `<span class="badge badge-inprog"${fs}>● В работе</span>`;
+  if (r.status === 'Отменена заявителем') {
+    const who = (opts.who && r.cancelledBy) ? `<div style="font-size:10px;color:var(--muted);margin-top:3px">${r.cancelledBy}</div>` : '';
+    return `<span class="badge badge-cancelled"${fs}>✕ Отменена заявителем</span>${who}`;
+  }
+  // Выполнена
+  const who = (opts.who && r.closedBy) ? `<div style="font-size:10px;color:var(--muted);margin-top:3px">${r.closedBy}</div>` : '';
+  return `<span class="badge badge-done"${fs}>✓ Выполнена</span>${who}`;
+}
 function getTypeDays(name) { const wt = (DB.workTypes||[]).find(w=>w.name===name); return wt ? (wt.days||1) : 1; }
 
 // ========== DATA ==========
@@ -1106,11 +1123,7 @@ function renderRequests() {
   tbody.innerHTML = list.map(r => {
     const worker = DB.users.find(u => u.id === r.assignee);
     const over = isOverdue(r);
-    const statusBadge = r.status==='Новая'
-      ? `<span class="badge badge-new">● Новая</span>`
-      : r.status==='В работе'
-      ? `<span class="badge badge-inprog">● В работе</span>`
-      : `<span class="badge badge-done">✓ Выполнена</span>${r.closedBy ? `<div style="font-size:10px;color:var(--muted);margin-top:3px">${r.closedBy}</div>` : ''}`;
+    const statusHtml = statusBadge(r, {who:true});
     const addrLine = r.street ? `${r.street}, д.${r.house}` : (r.address||'—');
     const subLine = [r.entrance?`Подъезд ${r.entrance}`:'', r.floor?`эт.${r.floor}`:'', r.apart?`кв.${r.apart}`:''].filter(Boolean).join(', ');
     const descLine = r.desc ? `<div style="font-size:11px;color:var(--muted);margin-top:3px;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${r.desc}">💬 ${r.desc}</div>` : '';
@@ -1150,7 +1163,7 @@ function renderRequests() {
       <td>${worker?worker.name:'—'}</td>
       <td style="font-size:11px;color:var(--muted)">${createdCell}</td>
       <td style="font-size:11px;color:var(--muted)">${startedCell}</td>
-      <td>${statusBadge}</td>
+      <td>${statusHtml}</td>
       <td>${actions}</td>
     </tr>`;
   }).join('');
@@ -1162,11 +1175,7 @@ function renderRequests() {
     const over = isOverdue(r);
     const addrLine = r.street ? `${r.street}, д.${r.house}` : (r.address||'—');
     const subLine = [r.entrance?`Подъезд ${r.entrance}`:'', r.floor?`эт.${r.floor}`:'', r.apart?`кв.${r.apart}`:''].filter(Boolean).join(' · ');
-    const statusBadge = r.status==='Новая'
-      ? `<span class="badge badge-new">● Новая</span>`
-      : r.status==='В работе'
-      ? `<span class="badge badge-inprog">● В работе</span>`
-      : `<span class="badge badge-done">✓ Выполнена${r.closedBy?' ('+r.closedBy+')':''}</span>`;
+    const statusHtmlCard = statusBadge(r, {who:true});
     let actions = '';
     if (currentUser.role==='owner' || currentUser.role==='secretary')
       actions += `<button class="action-btn" style="flex:1;text-align:center;padding:8px" onclick="editRequest(${r.id})">✏ Изменить</button>`;
@@ -1194,7 +1203,7 @@ function renderRequests() {
         <div style="text-align:right">
           <div class="rc-id">#${r.displayNumber||r.id}</div>
           ${r.status!=='Выполнена'&&r.assignee?`<div style="margin-top:4px">${renderPriorityCell(r)}</div>`:''}
-          <div style="margin-top:4px">${statusBadge}</div>
+          <div style="margin-top:4px">${statusHtmlCard}</div>
         </div>
       </div>
       <div class="rc-addr">${addrLine}${subLine?' · '+subLine:''}</div>
@@ -1468,6 +1477,7 @@ function saveRequest() {
     data.startedBy = r.startedBy || null;
     data.doneAt = r.doneAt || null;
     data.closedBy = r.closedBy || null;
+    data.cancelledBy = r.cancelledBy || null;
     // Если статус меняется на В работе — фиксируем дату и кто принял
     if (data.status === 'В работе' && r.status !== 'В работе') {
       if (!data.startedAt) data.startedAt = nowDT();
@@ -1482,6 +1492,12 @@ function saveRequest() {
       const roleLabel = { owner: 'Владелец', secretary: 'Секретарь', itr: currentUser.name, worker: currentUser.name };
       data.closedBy = roleLabel[currentUser.role] || currentUser.name;
     }
+    // Если статус меняется на Отменена заявителем — фиксируем кто отменил
+    if (data.status === 'Отменена заявителем' && r.status !== 'Отменена заявителем') {
+      const roleLabel = { owner: 'Владелец', secretary: 'Секретарь', itr: currentUser.name, worker: currentUser.name };
+      data.cancelledBy = (roleLabel[currentUser.role] || currentUser.name) + ' · ' + nowDT();
+    }
+    if (data.status !== 'Отменена заявителем') data.cancelledBy = null;
     // Если статус снят с Выполнена — сбрасываем
     if (data.status !== 'Выполнена') { data.closedBy = null; data.doneAt = null; }
     Object.assign(r, data);
@@ -2115,7 +2131,7 @@ function renderMonitor() {
     const elapsed = timeSince(r.startedAt);
     const over = isOverdue(r);
     const borderColor = r.status==='Новая'?'var(--new)':r.status==='В работе'?'var(--inprog)':'var(--done)';
-    const sb = r.status==='Новая'?`<span class="badge badge-new" style="font-size:10px">● Новая</span>`:r.status==='В работе'?`<span class="badge badge-inprog" style="font-size:10px">● В работе</span>`:`<span class="badge badge-done" style="font-size:10px">✓ Готово</span>`;
+    const sb = statusBadge(r, {small:true});
     const canPriority = (currentUser.role==='owner'||currentUser.role==='secretary'||currentUser.role==='itr') && r.status!=='Выполнена';
     // Priority buttons
     let prioBtns = '';
@@ -2201,7 +2217,7 @@ function showWorkerHistory(workerId, workerName) {
     const addr=r.street?`${r.street}, д.${r.house}${r.apart?' кв.'+r.apart:''}`:( r.address||'—');
     const over=isOverdue(r);
     const borderColor=r.status==='Новая'?'var(--new)':r.status==='В работе'?'var(--inprog)':'var(--done)';
-    const sb=r.status==='Новая'?`<span class="badge badge-new" style="font-size:10px">● Новая</span>`:r.status==='В работе'?`<span class="badge badge-inprog" style="font-size:10px">● В работе</span>`:`<span class="badge badge-done" style="font-size:10px">✓ Выполнена</span>`;
+    const sb=statusBadge(r, {small:true});
     return `<div class="monitor-task ${over?'monitor-task-overdue':''}" style="border-left-color:${borderColor}">
       <div style="display:flex;justify-content:space-between"><div style="font-weight:500">📍 ${addr}</div>${sb}</div>
       <div class="monitor-task-type">${getTypeIcon(r.type)} ${r.type}${r.desc?' — '+r.desc.slice(0,60):''}</div>
@@ -2362,7 +2378,7 @@ function renderHistoryResults(results, titleHtml) {
       <table><thead><tr><th>#</th><th>Жилец</th><th>Адрес</th><th>Кв.</th><th>Тип</th><th>Описание</th><th>Исполнитель</th><th>Подана</th><th>Статус</th></tr></thead>
       <tbody>${results.map(r=>{
         const worker=DB.users.find(u=>u.id===r.assignee);
-        const sb=r.status==='Новая'?`<span class="badge badge-new">● Новая</span>`:r.status==='В работе'?`<span class="badge badge-inprog">● В работе</span>`:`<span class="badge badge-done">✓ Выполнена${r.closedBy?' ('+r.closedBy+')':''}</span>`;
+        const sb=statusBadge(r, {who:true});
         const addr = r.street ? `${r.street}, д.${r.house}` : (r.address||'—');
         return `<tr><td style="color:var(--muted);font-size:12px">#${r.displayNumber||r.id}</td><td><div style="font-weight:500">${r.name}</div><div style="font-size:11px;color:var(--muted)">${r.phone||''}</div></td><td style="font-size:12px">${addr}</td><td>${r.apart||'—'}</td><td><span class="type-badge">${getTypeIcon(r.type)} ${r.type}</span></td><td style="font-size:12px;color:var(--muted)">${r.desc||'—'}</td><td>${worker?worker.name:'—'}</td><td style="font-size:11px;color:var(--muted)">${r.created||'—'}</td><td>${sb}</td></tr>`;
       }).join('')}</tbody></table>
@@ -2370,7 +2386,7 @@ function renderHistoryResults(results, titleHtml) {
     <div class="request-cards">
       ${results.map(r=>{
         const worker=DB.users.find(u=>u.id===r.assignee);
-        const sb=r.status==='Новая'?`<span class="badge badge-new">● Новая</span>`:r.status==='В работе'?`<span class="badge badge-inprog">● В работе</span>`:`<span class="badge badge-done">✓ Выполнена${r.closedBy?' ('+r.closedBy+')':''}</span>`;
+        const sb=statusBadge(r, {who:true});
         const addr = r.street ? `${r.street}, д.${r.house}` : (r.address||'—');
         return `<div class="request-card"><div class="rc-top"><div><div class="rc-name">${r.name}</div><div style="font-size:11px;color:var(--muted)">${r.phone||''}</div></div><div style="text-align:right"><div class="rc-id">#${r.displayNumber||r.id}</div><div style="margin-top:4px">${sb}</div></div></div><div style="font-size:12px;color:var(--muted);margin-bottom:4px">${addr}${r.apart?' · кв. '+r.apart:''}</div><div class="rc-meta"><span class="type-badge">${getTypeIcon(r.type)} ${r.type}</span>${worker?`<span style="font-size:12px;color:var(--muted)">${worker.name}</span>`:''}</div>${r.desc?`<div class="rc-desc">💬 ${r.desc}</div>`:''}<div style="font-size:11px;color:var(--muted)">${r.created||'—'}</div></div>`;
       }).join('')}
