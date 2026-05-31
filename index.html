@@ -280,6 +280,9 @@
   .action-btn { padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); color: var(--muted); font-family: inherit; font-size: 11px; cursor: pointer; transition: all 0.15s; margin-right: 4px; }
   .action-btn:hover { border-color: var(--accent); color: var(--accent); }
   .action-btn.danger:hover { border-color: var(--danger); color: var(--danger); }
+  /* Колонка действий в таблице заявок: вертикальный стек ровной ширины с отступом от края */
+  .actions-stack { display: flex; flex-direction: column; gap: 4px; align-items: stretch; padding-right: 10px; min-width: 120px; max-width: 160px; }
+  .actions-stack .action-btn { margin: 0; text-align: center; white-space: nowrap; }
   .overdue-row td { background: rgba(255,59,92,0.04); }
 
   /* MODAL */
@@ -1247,6 +1250,9 @@ function renderRequests() {
     }
     // Описание + фото — доступно всем ролям (любой участник может прикрепить фото)
     actions += `<button class="action-btn" onclick="openDescEdit(${r.id})">💬 Описание</button>`;
+    // Печать наряда — владельцу и секретарю
+    if (currentUser.role==='owner' || currentUser.role==='secretary')
+      actions += `<button class="action-btn" onclick="printOrder(${r.id})">🖨 Печать</button>`;
     if (currentUser.role==='worker' && r.status!=='Выполнена') {
       if (r.status==='Новая') actions += `<button class="action-btn" onclick="quickStatus(${r.id},'В работе')">▶ Начать</button>`;
       if (r.status==='В работе') actions += `<button class="action-btn" onclick="quickStatus(${r.id},'Выполнена')">✓ Готово</button>`;
@@ -1267,7 +1273,7 @@ function renderRequests() {
       <td style="font-size:11px;color:var(--muted)">${createdCell}</td>
       <td style="font-size:11px;color:var(--muted)">${startedCell}</td>
       <td>${statusHtml}</td>
-      <td>${actions}</td>
+      <td><div class="actions-stack">${actions}</div></td>
     </tr>`;
   }).join('');
 
@@ -1611,6 +1617,104 @@ function deleteRequest(id) {
   if (!confirm('Удалить заявку?')) return;
   DB.requests = DB.requests.filter(r=>r.id!==id);
   saveData(); renderRequests(); showToast('Заявка удалена');
+}
+
+// ========== ПЕЧАТЬ НАРЯДА (Word .doc, 2 экземпляра) ==========
+function printOrder(id) {
+  const r = (DB.requests||[]).find(req => req.id === id);
+  if (!r) { showToast('Заявка не найдена','error'); return; }
+  const worker = DB.users.find(u => u.id === r.assignee);
+  // Разбираем дату "ДД.ММ.ГГГГ ЧЧ:ММ" из r.created
+  const monthsRu = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+  let day='', monthRu='', year='', timeIn='';
+  const m = (r.created||'').match(/(\d{1,2})\.(\d{1,2})\.(\d{4})\s+(\d{1,2}:\d{2})/);
+  if (m) { day=m[1]; monthRu=monthsRu[parseInt(m[2],10)-1]||''; year=m[3]; timeIn=m[4]; }
+  const addrLine = [r.street && `${r.street}, д. ${r.house||''}`, r.apart && `кв. ${r.apart}`].filter(Boolean).join(', ');
+  const customerLine = [r.name, r.phone].filter(Boolean).join(', тел. ');
+  const workerLine = worker ? worker.name : '';
+  const number = r.displayNumber || ('#' + r.id);
+  const esc = (s) => String(s||'').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+  const workNaming = [r.type, r.desc].filter(Boolean).map(esc).join(': ');
+  // Один экземпляр наряда
+  function copyHtml() {
+    return `
+    <div style="font-family:'Times New Roman',serif;font-size:11pt;line-height:1.3;">
+      <div style="text-align:center;">
+        <div style="font-size:14pt;font-weight:bold;">ООО Управляющая компания «СИРИУС»</div>
+        <div style="font-size:10pt;">308027 г. Белгород ул. Щорса 8 «Б» т. 75-33-99, 75-33-88.</div>
+        <div style="font-size:13pt;font-weight:bold;margin-top:6pt;">Наряд-заказ № ${esc(number)}</div>
+      </div>
+      <table cellpadding="0" cellspacing="0" style="width:100%;margin-top:6pt;border:0;">
+        <tr><td style="border:0;width:50%;"></td><td style="border:0;width:50%;text-align:left;">
+          от «${esc(day)}» ${esc(monthRu)} ${esc(year)} г.<br>
+          Время поступления заявки: ${esc(timeIn)}<br>
+          Время выполнения заявки:<br>
+          Начало __________ окончание __________
+        </td></tr>
+      </table>
+      <div style="margin-top:8pt;"><b>Объект:</b> ${esc(addrLine)}</div>
+      <div><b>Заказчик:</b> ${esc(customerLine)}</div>
+      <div><b>Поручено исполнителю:</b> ${esc(workerLine)} &nbsp;&nbsp;&nbsp;&nbsp; <b>Подпись</b> _______________</div>
+      <table border="1" cellpadding="4" cellspacing="0" style="border-collapse:collapse;width:100%;margin-top:8pt;">
+        <thead>
+          <tr><th style="width:8%;">№</th><th>Наименование работы (услуги)</th></tr>
+        </thead>
+        <tbody>
+          <tr><td style="height:24pt;">1</td><td>${esc(workNaming) || '&nbsp;'}</td></tr>
+          <tr><td style="height:24pt;">2</td><td>&nbsp;</td></tr>
+          <tr><td style="height:24pt;">3</td><td>&nbsp;</td></tr>
+          <tr><td style="height:24pt;">4</td><td>&nbsp;</td></tr>
+        </tbody>
+      </table>
+      <div style="text-align:center;font-weight:bold;margin-top:10pt;">Акт выполненных работ № ${esc(number)}</div>
+      <table border="1" cellpadding="4" cellspacing="0" style="border-collapse:collapse;width:100%;margin-top:4pt;">
+        <thead>
+          <tr><th style="width:8%;">№</th><th>Наименование работы (услуги)</th><th style="width:28%;">Отметка о выполнении</th></tr>
+        </thead>
+        <tbody>
+          <tr><td style="height:22pt;">1</td><td>${esc(workNaming) || '&nbsp;'}</td><td>&nbsp;</td></tr>
+          <tr><td style="height:22pt;">2</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+          <tr><td style="height:22pt;">3</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+          <tr><td style="height:22pt;">4</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+          <tr><td style="height:22pt;">5</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+        </tbody>
+      </table>
+      <div style="margin-top:6pt;font-style:italic;">Вышеперечисленные работы (услуги) выполнены полностью. Заказчик претензий по объему, качеству и срокам оказания услуг претензий не имеет.</div>
+      <div style="text-align:center;font-weight:bold;margin-top:6pt;">ОБЯЗАТЕЛЬНО СНИМАТЬ Показания приборов учета!!!</div>
+      <div>ХВ № счетчика _________________________, показания _________________________</div>
+      <div>ГВ № счетчика _________________________, показания _________________________</div>
+      <div>ХВ № счетчика _________________________, показания _________________________</div>
+      <div>ГВ № счетчика _________________________, показания _________________________</div>
+      <div style="margin-top:8pt;"><b>Подписи:</b></div>
+      <div>Заказчик ________________________</div>
+      <div>Исполнитель ______________________</div>
+      <div style="text-align:center;margin-top:8pt;">В целях улучшения качества выполненных услуг, просим оценить нашу работу</div>
+      <div style="text-align:center;font-size:14pt;">☹ &nbsp;☐ &nbsp;&nbsp; 😐 &nbsp;☐ &nbsp;&nbsp; 😊 &nbsp;☐</div>
+    </div>`;
+  }
+  // Два экземпляра: один — заказчику, второй — нам, разделены разрывом страницы
+  const body = copyHtml() + '<br clear="all" style="mso-special-character:line-break;page-break-before:always;">' + copyHtml();
+  // Заворачиваем в Word-совместимый HTML
+  const html = `<!DOCTYPE html><html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+    <head>
+      <meta charset="utf-8">
+      <title>Наряд-заказ ${esc(number)}</title>
+      <!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->
+      <style>@page { size: A4; margin: 1.5cm; }</style>
+    </head>
+    <body>${body}</body>
+  </html>`;
+  // Скачиваем как .doc — Word и Pages открывают такой файл и дают редактировать
+  const blob = new Blob(['\ufeff' + html], { type: 'application/msword;charset=utf-8' });
+  const safeAddr = String(addrLine||'').replace(/[^а-яА-Яa-zA-Z0-9_-]/g,'_').slice(0,40);
+  const filename = `Наряд_${number}_${safeAddr || 'без_адреса'}.doc`;
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  setTimeout(() => { document.body.removeChild(link); URL.revokeObjectURL(link.href); }, 0);
+  showToast('Файл наряда скачан. Откройте его в Word и распечатайте.','success');
 }
 
 // ========== REQUEST MODAL ==========
