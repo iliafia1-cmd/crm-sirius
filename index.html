@@ -721,11 +721,11 @@
           <option value="premise">Нежилое</option>
         </select>
       </div>
-      <div><div class="field-label">Номер</div><input class="field-input" id="uNumber" placeholder="1"></div>
+      <div><div class="field-label">Номер</div><input class="field-input" id="uNumber"></div>
     </div>
     <div class="form-row">
-      <div><div class="field-label">Подъезд</div><input class="field-input" id="uEntrance" placeholder="1"></div>
-      <div><div class="field-label">Этаж</div><input class="field-input" id="uFloor" placeholder="1"></div>
+      <div><div class="field-label">Подъезд</div><input class="field-input" id="uEntrance"></div>
+      <div><div class="field-label">Этаж</div><input class="field-input" id="uFloor"></div>
     </div>
     <div class="form-row single">
       <div><div class="field-label">Владелец (ФИО или название фирмы)</div><input class="field-input" id="uOwner" placeholder="Иванов Иван Иванович"></div>
@@ -2288,64 +2288,102 @@ async function handleUnitsExcel(event) {
     const data = await file.arrayBuffer();
     const wb = XLSX.read(data, { type: 'array' });
     const ws = wb.Sheets[wb.SheetNames[0]];
-    // Берём все строки как массивы значений (header:1)
     const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
     if (!rows.length) { showToast('Файл пустой','error'); return; }
-    // Ищем строку заголовков (содержит хотя бы одно из: "квартир", "номер", "владелец", "фио", "помещ")
-    let headerIdx = -1;
-    for (let i = 0; i < Math.min(rows.length, 10); i++) {
-      const joined = rows[i].map(v=>String(v).toLowerCase()).join('|');
-      if (/квартир|номер|владел|фио|помещ|этаж|подъезд|тип/.test(joined)) {
-        headerIdx = i; break;
+
+    // ШАГ 1. Ищем колонку с ТИПОМ помещения по содержимому
+    // (значения "Жилое", "Нежилое", "Паркинг", "Жилая", "Нежилая" и т.п.)
+    const typeRe = /^(жилое|нежилое|паркинг|жилая|нежилая|коммерческое|офис|магазин)$/i;
+    const colCounts = [];
+    for (const row of rows) {
+      for (let c = 0; c < row.length; c++) {
+        const v = String(row[c] || '').trim();
+        if (typeRe.test(v)) colCounts[c] = (colCounts[c] || 0) + 1;
       }
     }
-    if (headerIdx === -1) headerIdx = 0; // считаем первую строку заголовком
-    const headers = rows[headerIdx].map(v => String(v).trim().toLowerCase());
-    const dataRows = rows.slice(headerIdx + 1).filter(r => r.some(c => String(c).trim() !== ''));
-    // Маппинг колонок
-    const findCol = (...keywords) => {
-      for (let i = 0; i < headers.length; i++) {
-        for (const kw of keywords) {
-          if (headers[i].includes(kw)) return i;
-        }
-      }
-      return -1;
-    };
-    const colType = findCol('тип','категор');
-    const colNumber = findCol('квартир','номер','помещ','кв');
-    const colEntrance = findCol('подъезд','подъ');
-    const colFloor = findCol('этаж');
-    const colOwner = findCol('владел','собственник','фио','имя','наименование');
-    const colPhone = findCol('телефон','моб','тел');
-    if (colNumber === -1 && colOwner === -1) {
-      showToast('В файле не найдены столбцы с номером или владельцем','error');
+    let typeCol = -1, maxCount = 0;
+    for (let c = 0; c < colCounts.length; c++) {
+      if ((colCounts[c] || 0) > maxCount) { maxCount = colCounts[c]; typeCol = c; }
+    }
+    if (typeCol === -1) {
+      showToast('Не нашёл колонку с типом помещения (Жилое/Нежилое/Паркинг). Проверьте файл.','error');
       return;
     }
-    // Парсим строки в units
-    const newUnits = [];
-    for (const row of dataRows) {
-      const owner = String(row[colOwner] || '').trim();
-      const number = String(row[colNumber] || '').trim();
-      if (!owner && !number) continue;
-      let unitType = 'apt';
-      if (colType !== -1) {
-        const typeVal = String(row[colType] || '').toLowerCase();
-        if (/нежил|коммерч|офис|магазин/.test(typeVal)) unitType = 'premise';
+
+    // ШАГ 2. Номер — всегда столбец слева от типа.
+    const numberCol = typeCol - 1;
+    if (numberCol < 0) {
+      showToast('Перед столбцом типа должен быть столбец с номером.','error');
+      return;
+    }
+
+    // ШАГ 3. Подъезд и этаж — справа от типа, если там есть числовые значения.
+    let entranceCol = -1, floorCol = -1;
+    const looksNumeric = (colIdx, maxVal) => {
+      let cnt = 0;
+      for (const row of rows) {
+        const v = String(row[colIdx] || '').trim();
+        if (/^\d+$/.test(v) && parseInt(v, 10) <= maxVal) cnt++;
       }
+      return cnt;
+    };
+    if (typeCol + 1 < (rows[0]?.length || 0) && looksNumeric(typeCol + 1, 50) > 5) entranceCol = typeCol + 1;
+    if (typeCol + 2 < (rows[0]?.length || 0) && looksNumeric(typeCol + 2, 100) > 5) floorCol = typeCol + 2;
+
+    // ШАГ 4. ФИО / название фирмы — склеиваем все непустые ячейки СЛЕВА от номера
+    // (например: "РЫЖКОВ", "МАКСИМ", "ВЛАДИМИРОВИЧ" → "Рыжков Максим Владимирович"
+    //  или "ООО", "СЗ", "Вега-квартал" → "ООО СЗ Вега-квартал")
+    const newUnits = [];
+    let skipped = 0;
+    for (const row of rows) {
+      const typeVal = String(row[typeCol] || '').trim();
+      if (!typeRe.test(typeVal)) { skipped++; continue; } // пропускаем шапку и пустые строки
+      const number = String(row[numberCol] || '').trim();
+      if (!number) { skipped++; continue; }
+      // Тип: "Нежилое"/"Паркинг" → нежилое, "Жилое" → квартира
+      let unitType = 'apt';
+      if (/^нежил/i.test(typeVal) || /паркинг/i.test(typeVal) || /коммерч|офис|магазин/i.test(typeVal)) {
+        unitType = 'premise';
+      }
+      // ФИО / фирма
+      const ownerParts = [];
+      for (let c = 0; c < numberCol; c++) {
+        const v = String(row[c] || '').trim();
+        if (v) ownerParts.push(v);
+      }
+      // Аккуратно нормализуем регистр: ИМЕНА в КАПСЕ → "Иванов Иван", фирмы оставляем как есть
+      const owner = ownerParts.map(p => {
+        // Если слово полностью в верхнем регистре и длиннее 1 символа — переводим в Title Case
+        if (p === p.toUpperCase() && p.length > 1 && /^[А-ЯЁ\s-]+$/.test(p)) {
+          return p.split(/(\s+)/).map(w =>
+            w && w[0] ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w
+          ).join('');
+        }
+        return p;
+      }).join(' ');
+
       newUnits.push({
-        id: 'u_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+        id: 'u_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
         unitType,
         number,
-        entrance: colEntrance !== -1 ? String(row[colEntrance] || '').trim() : '',
-        floor: colFloor !== -1 ? String(row[colFloor] || '').trim() : '',
+        entrance: entranceCol !== -1 ? String(row[entranceCol] || '').trim() : '',
+        floor: floorCol !== -1 ? String(row[floorCol] || '').trim() : '',
         owner,
-        phone: colPhone !== -1 ? String(row[colPhone] || '').trim() : '',
+        phone: '', // в вашем файле телефонов нет — заполните вручную позже
       });
     }
-    if (!newUnits.length) { showToast('В файле не найдены данные о помещениях','error'); return; }
+    if (!newUnits.length) {
+      showToast('В файле не найдены строки с данными о помещениях','error');
+      return;
+    }
+
     // Превью
-    const sample = newUnits.slice(0, 5).map(u => `• ${u.unitType==='premise'?'Нежилое':'Кв.'} ${u.number} — ${u.owner||'—'}`).join('\n');
-    const msg = `Найдено помещений: ${newUnits.length}\n\nПример первых строк:\n${sample}\n\nЗаменить текущий список (если есть) или добавить к существующему?\n\nOK — заменить\nОтмена — добавить к существующему`;
+    const sample = newUnits.slice(0, 5).map(u =>
+      `• ${u.unitType==='premise'?'Нежилое':'Кв.'} ${u.number} — ${u.owner||'—'}` +
+      (u.entrance || u.floor ? ` (под ${u.entrance||'?'}, эт ${u.floor||'?'})` : '')
+    ).join('\n');
+    const msg = `Распознано помещений: ${newUnits.length}\n\nПример первых строк:\n${sample}\n\n` +
+      `OK — заменить текущий список\nОтмена — добавить к существующему`;
     const replace = confirm(msg);
     const a = (DB.addresses||[]).find(x=>x.id===currentUnitsAddressId);
     if (!a) return;
