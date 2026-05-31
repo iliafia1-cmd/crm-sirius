@@ -264,7 +264,7 @@
   .clear-filter-btn { background: none; border: none; color: var(--muted); cursor: pointer; font-family: inherit; font-size: 12px; }
   .clear-filter-btn:hover { color: var(--danger); }
 
-  .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow-x: auto; overflow-y: hidden; }
   table { width: 100%; border-collapse: collapse; }
   th { background: var(--surface2); padding: 10px 16px; text-align: left; font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); }
   td { padding: 12px 16px; font-size: 13px; border-bottom: 1px solid var(--border); vertical-align: middle; }
@@ -280,9 +280,9 @@
   .action-btn { padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); color: var(--muted); font-family: inherit; font-size: 11px; cursor: pointer; transition: all 0.15s; margin-right: 4px; }
   .action-btn:hover { border-color: var(--accent); color: var(--accent); }
   .action-btn.danger:hover { border-color: var(--danger); color: var(--danger); }
-  /* Колонка действий в таблице заявок: вертикальный стек ровной ширины с отступом от края */
-  .actions-stack { display: flex; flex-direction: column; gap: 4px; align-items: stretch; padding-right: 10px; min-width: 120px; max-width: 160px; }
-  .actions-stack .action-btn { margin: 0; text-align: center; white-space: nowrap; }
+  /* Колонка действий в таблице заявок: компактный вертикальный стек, прижатый к правому краю */
+  .actions-stack { display: inline-flex; flex-direction: column; gap: 4px; align-items: stretch; padding-right: 4px; }
+  .actions-stack .action-btn { margin: 0; padding: 4px 8px; text-align: center; white-space: nowrap; }
   .overdue-row td { background: rgba(255,59,92,0.04); }
 
   /* MODAL */
