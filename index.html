@@ -22,6 +22,7 @@
 <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;600;700&family=Golos+Text:wght@400;500;600&display=swap" rel="stylesheet">
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
@@ -679,6 +680,62 @@
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal('addressModal')">Отмена</button>
       <button class="btn-save" onclick="saveAddress()">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Модалка списка помещений для адреса -->
+<div class="modal-overlay" id="unitsModal">
+  <div class="modal" style="width:900px;max-width:95vw;max-height:90vh;display:flex;flex-direction:column">
+    <div class="modal-title" id="unitsModalTitle">Помещения</div>
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+      <button class="action-btn" onclick="openAddUnit()" style="padding:8px 14px">➕ Добавить помещение</button>
+      <button class="action-btn" onclick="document.getElementById('unitsExcelInput').click()" style="padding:8px 14px">📊 Импорт из Excel</button>
+      <input type="file" id="unitsExcelInput" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleUnitsExcel(event)">
+      <div style="flex:1"></div>
+      <span id="unitsCount" style="align-self:center;color:var(--muted);font-size:12px"></span>
+    </div>
+    <div class="table-wrap" style="flex:1;overflow-y:auto">
+      <table>
+        <thead><tr>
+          <th>Тип</th><th>№</th><th>Подъезд</th><th>Этаж</th><th>Владелец</th><th>Телефон</th><th></th>
+        </tr></thead>
+        <tbody id="unitsBody"></tbody>
+      </table>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('unitsModal')">Закрыть</button>
+    </div>
+  </div>
+</div>
+
+<!-- Модалка формы одного помещения -->
+<div class="modal-overlay" id="unitModal">
+  <div class="modal" style="width:480px">
+    <div class="modal-title" id="unitModalTitle">Помещение</div>
+    <div class="form-row">
+      <div>
+        <div class="field-label">Тип</div>
+        <select class="field-select" id="uType">
+          <option value="apt">Квартира</option>
+          <option value="premise">Нежилое</option>
+        </select>
+      </div>
+      <div><div class="field-label">Номер</div><input class="field-input" id="uNumber" placeholder="1"></div>
+    </div>
+    <div class="form-row">
+      <div><div class="field-label">Подъезд</div><input class="field-input" id="uEntrance" placeholder="1"></div>
+      <div><div class="field-label">Этаж</div><input class="field-input" id="uFloor" placeholder="1"></div>
+    </div>
+    <div class="form-row single">
+      <div><div class="field-label">Владелец (ФИО или название фирмы)</div><input class="field-input" id="uOwner" placeholder="Иванов Иван Иванович"></div>
+    </div>
+    <div class="form-row single">
+      <div><div class="field-label">Телефон</div><input class="field-input" id="uPhone" placeholder="+7 ..."></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('unitModal')">Отмена</button>
+      <button class="btn-save" onclick="saveUnit()">Сохранить</button>
     </div>
   </div>
 </div>
@@ -2064,11 +2121,17 @@ function renderSettings() {
   // Addresses
   const ab = document.getElementById('addressesBody');
   const addrs = DB.addresses || [];
-  ab.innerHTML = addrs.length ? addrs.map(a => `<tr>
-    <td>${a.street}</td><td>${a.house}</td>
-    <td><button class="action-btn" onclick="editAddress(${a.id})">✏</button>
-    <button class="action-btn danger" onclick="deleteAddress(${a.id})">✕</button></td>
-  </tr>`).join('') : `<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:20px">Нет адресов</td></tr>`;
+  ab.innerHTML = addrs.length ? addrs.map(a => {
+    const cnt = Array.isArray(a.units) ? a.units.length : 0;
+    return `<tr>
+      <td>${a.street}</td><td>${a.house}</td>
+      <td>
+        <button class="action-btn" onclick="openUnits(${a.id})">👥 Помещения${cnt?' ('+cnt+')':''}</button>
+        <button class="action-btn" onclick="editAddress(${a.id})">✏</button>
+        <button class="action-btn danger" onclick="deleteAddress(${a.id})">✕</button>
+      </td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:20px">Нет адресов</td></tr>`;
 
   // Work types
   const wb = document.getElementById('workTypesBody');
@@ -2113,6 +2176,191 @@ function deleteAddress(id) {
   if (!confirm('Удалить адрес?')) return;
   DB.addresses = (DB.addresses||[]).filter(a=>a.id!==id);
   saveData(); renderSettings(); showToast('Адрес удалён');
+}
+
+// ========== ПОМЕЩЕНИЯ (UNITS) ==========
+let currentUnitsAddressId = null;
+let editingUnitId = null;
+
+function openUnits(addressId) {
+  const a = (DB.addresses||[]).find(x=>x.id===addressId);
+  if (!a) { showToast('Адрес не найден','error'); return; }
+  currentUnitsAddressId = addressId;
+  if (!Array.isArray(a.units)) a.units = [];
+  document.getElementById('unitsModalTitle').textContent = `Помещения: ${a.street}, д. ${a.house}`;
+  renderUnits();
+  document.getElementById('unitsModal').classList.add('open');
+}
+
+function renderUnits() {
+  const a = (DB.addresses||[]).find(x=>x.id===currentUnitsAddressId);
+  if (!a) return;
+  const units = Array.isArray(a.units) ? a.units : [];
+  // Сортируем: сначала квартиры по номеру, потом нежилые
+  const sorted = units.slice().sort((x,y) => {
+    if (x.unitType !== y.unitType) return x.unitType === 'apt' ? -1 : 1;
+    const nx = parseInt(x.number,10) || 0;
+    const ny = parseInt(y.number,10) || 0;
+    return nx - ny;
+  });
+  const body = document.getElementById('unitsBody');
+  body.innerHTML = sorted.length ? sorted.map(u => `<tr>
+    <td>${u.unitType === 'premise' ? '🏢 Нежилое' : '🏠 Квартира'}</td>
+    <td>${u.number || '—'}</td>
+    <td>${u.entrance || '—'}</td>
+    <td>${u.floor || '—'}</td>
+    <td>${u.owner || '—'}</td>
+    <td>${u.phone || '—'}</td>
+    <td>
+      <button class="action-btn" onclick="editUnit('${u.id}')">✏</button>
+      <button class="action-btn danger" onclick="deleteUnit('${u.id}')">✕</button>
+    </td>
+  </tr>`).join('') : `<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:20px">Нет помещений. Добавьте вручную или импортируйте из Excel.</td></tr>`;
+  document.getElementById('unitsCount').textContent = units.length ? `Всего: ${units.length}` : '';
+}
+
+function openAddUnit() {
+  editingUnitId = null;
+  document.getElementById('unitModalTitle').textContent = 'Новое помещение';
+  document.getElementById('uType').value = 'apt';
+  ['uNumber','uEntrance','uFloor','uOwner','uPhone'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('unitModal').classList.add('open');
+}
+
+function editUnit(uid) {
+  const a = (DB.addresses||[]).find(x=>x.id===currentUnitsAddressId);
+  if (!a) return;
+  const u = (a.units||[]).find(x=>x.id===uid);
+  if (!u) return;
+  editingUnitId = uid;
+  document.getElementById('unitModalTitle').textContent = 'Редактировать помещение';
+  document.getElementById('uType').value = u.unitType || 'apt';
+  document.getElementById('uNumber').value = u.number || '';
+  document.getElementById('uEntrance').value = u.entrance || '';
+  document.getElementById('uFloor').value = u.floor || '';
+  document.getElementById('uOwner').value = u.owner || '';
+  document.getElementById('uPhone').value = u.phone || '';
+  document.getElementById('unitModal').classList.add('open');
+}
+
+function saveUnit() {
+  const a = (DB.addresses||[]).find(x=>x.id===currentUnitsAddressId);
+  if (!a) return;
+  if (!Array.isArray(a.units)) a.units = [];
+  const data = {
+    unitType: document.getElementById('uType').value,
+    number: document.getElementById('uNumber').value.trim(),
+    entrance: document.getElementById('uEntrance').value.trim(),
+    floor: document.getElementById('uFloor').value.trim(),
+    owner: document.getElementById('uOwner').value.trim(),
+    phone: document.getElementById('uPhone').value.trim(),
+  };
+  if (editingUnitId) {
+    const u = a.units.find(x=>x.id===editingUnitId);
+    if (u) Object.assign(u, data);
+  } else {
+    const id = 'u_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
+    a.units.push({ id, ...data });
+  }
+  saveData(); closeModal('unitModal'); renderUnits(); renderSettings();
+  showToast('Помещение сохранено','success');
+}
+
+function deleteUnit(uid) {
+  if (!confirm('Удалить помещение?')) return;
+  const a = (DB.addresses||[]).find(x=>x.id===currentUnitsAddressId);
+  if (!a) return;
+  a.units = (a.units||[]).filter(x=>x.id!==uid);
+  saveData(); renderUnits(); renderSettings();
+  showToast('Помещение удалено');
+}
+
+// ========== ИМПОРТ ИЗ EXCEL ==========
+async function handleUnitsExcel(event) {
+  const file = event.target.files[0];
+  event.target.value = ''; // сбрасываем input для повторного выбора того же файла
+  if (!file) return;
+  if (typeof XLSX === 'undefined') {
+    showToast('Библиотека Excel не загрузилась. Перезагрузите страницу.','error');
+    return;
+  }
+  try {
+    const data = await file.arrayBuffer();
+    const wb = XLSX.read(data, { type: 'array' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    // Берём все строки как массивы значений (header:1)
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+    if (!rows.length) { showToast('Файл пустой','error'); return; }
+    // Ищем строку заголовков (содержит хотя бы одно из: "квартир", "номер", "владелец", "фио", "помещ")
+    let headerIdx = -1;
+    for (let i = 0; i < Math.min(rows.length, 10); i++) {
+      const joined = rows[i].map(v=>String(v).toLowerCase()).join('|');
+      if (/квартир|номер|владел|фио|помещ|этаж|подъезд|тип/.test(joined)) {
+        headerIdx = i; break;
+      }
+    }
+    if (headerIdx === -1) headerIdx = 0; // считаем первую строку заголовком
+    const headers = rows[headerIdx].map(v => String(v).trim().toLowerCase());
+    const dataRows = rows.slice(headerIdx + 1).filter(r => r.some(c => String(c).trim() !== ''));
+    // Маппинг колонок
+    const findCol = (...keywords) => {
+      for (let i = 0; i < headers.length; i++) {
+        for (const kw of keywords) {
+          if (headers[i].includes(kw)) return i;
+        }
+      }
+      return -1;
+    };
+    const colType = findCol('тип','категор');
+    const colNumber = findCol('квартир','номер','помещ','кв');
+    const colEntrance = findCol('подъезд','подъ');
+    const colFloor = findCol('этаж');
+    const colOwner = findCol('владел','собственник','фио','имя','наименование');
+    const colPhone = findCol('телефон','моб','тел');
+    if (colNumber === -1 && colOwner === -1) {
+      showToast('В файле не найдены столбцы с номером или владельцем','error');
+      return;
+    }
+    // Парсим строки в units
+    const newUnits = [];
+    for (const row of dataRows) {
+      const owner = String(row[colOwner] || '').trim();
+      const number = String(row[colNumber] || '').trim();
+      if (!owner && !number) continue;
+      let unitType = 'apt';
+      if (colType !== -1) {
+        const typeVal = String(row[colType] || '').toLowerCase();
+        if (/нежил|коммерч|офис|магазин/.test(typeVal)) unitType = 'premise';
+      }
+      newUnits.push({
+        id: 'u_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+        unitType,
+        number,
+        entrance: colEntrance !== -1 ? String(row[colEntrance] || '').trim() : '',
+        floor: colFloor !== -1 ? String(row[colFloor] || '').trim() : '',
+        owner,
+        phone: colPhone !== -1 ? String(row[colPhone] || '').trim() : '',
+      });
+    }
+    if (!newUnits.length) { showToast('В файле не найдены данные о помещениях','error'); return; }
+    // Превью
+    const sample = newUnits.slice(0, 5).map(u => `• ${u.unitType==='premise'?'Нежилое':'Кв.'} ${u.number} — ${u.owner||'—'}`).join('\n');
+    const msg = `Найдено помещений: ${newUnits.length}\n\nПример первых строк:\n${sample}\n\nЗаменить текущий список (если есть) или добавить к существующему?\n\nOK — заменить\nОтмена — добавить к существующему`;
+    const replace = confirm(msg);
+    const a = (DB.addresses||[]).find(x=>x.id===currentUnitsAddressId);
+    if (!a) return;
+    if (replace) {
+      a.units = newUnits;
+    } else {
+      if (!Array.isArray(a.units)) a.units = [];
+      a.units = a.units.concat(newUnits);
+    }
+    saveData(); renderUnits(); renderSettings();
+    showToast(`Импортировано: ${newUnits.length}`,'success');
+  } catch (e) {
+    console.error('Excel import error:', e);
+    showToast('Ошибка чтения файла: ' + e.message,'error');
+  }
 }
 
 function openAddWorkType() {
