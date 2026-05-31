@@ -163,6 +163,17 @@ function continueKeyboard() {
   };
 }
 
+// Клавиатура выбора типа помещения: квартира или нежилое
+function unitTypeKeyboard() {
+  return {
+    inline_keyboard: [
+      [{ text: "🏠 Квартира", callback_data: "unit:apt" }],
+      [{ text: "🏢 Нежилое помещение", callback_data: "unit:premise" }],
+      [{ text: "❌ Отмена", callback_data: "cancel" }],
+    ],
+  };
+}
+
 // Список видов работ из CRM (без типа "обратный звонок")
 async function getRequestTypes() {
   try {
@@ -266,6 +277,7 @@ async function createRequest(sess, tgChatId) {
       entrance: "",
       floor: "",
       apart: sess.apart || "",
+      premise: sess.premise || "",
       type: sess.type || "Другое",
       desc: sess.desc || "",
       assignee: sess.assignee || null,
@@ -278,6 +290,7 @@ async function createRequest(sess, tgChatId) {
       doneAt: null,
       closedBy: null,
       cancelledBy: null,
+      cancelledAt: null,
       photos: Array.isArray(sess.photos) ? sess.photos.slice() : [],
       tgChatId: tgChatId || null,
     };
@@ -342,6 +355,7 @@ async function cancelRequestByUser(id, chatId) {
       if (r.status !== "Новая" && r.status !== "В работе") return; // уже не активная
       r.status = "Отменена заявителем";
       r.cancelledBy = "Жилец (Telegram)";
+      r.cancelledAt = nowDT();
       reqs[idx] = r;
       data.requests = reqs;
       tx.set(docRef, data);
@@ -440,7 +454,7 @@ async function finalizeAndConfirm(chatId, sess) {
       chatId,
       `✅ <b>Заявка принята!</b>\n\nНомер заявки: <b>${displayNumber}</b>\n` +
         `Адрес: ${sess.street}${sess.house ? ", д." + sess.house : ""}${
-          sess.apart ? ", кв." + sess.apart : ""
+          sess.apart ? ", кв." + sess.apart : (sess.premise ? ", пом." + sess.premise : "")
         }\n` +
         `Тип: ${sess.type}` +
         (photosCount ? `\nФото: ${photosCount}` : "") +
@@ -543,7 +557,7 @@ async function handleUpdate(update) {
       return;
     }
 
-    // Выбор дома → просим ввести квартиру
+    // Выбор дома → спрашиваем тип помещения (квартира или нежилое)
     if (data.startsWith("house:")) {
       const id = parseInt(data.slice(6), 10);
       const addresses = await getAddresses();
@@ -555,11 +569,27 @@ async function handleUpdate(update) {
       const sess = (await getSession(chatId)) || {};
       sess.street = addr.street;
       sess.house = addr.house;
-      sess.step = "apart";
+      sess.step = "unit_type";
       await setSession(chatId, sess);
       await sendMessage(
         chatId,
-        `Адрес: <b>${addr.street}, д. ${addr.house}</b>\n\nУкажите номер квартиры (просто напишите число). Если заявка по дому в целом (подъезд, двор) — напишите <b>—</b> (прочерк).\n\n<i>Чтобы отменить — /cancel</i>`
+        `Адрес: <b>${addr.street}, д. ${addr.house}</b>\n\nВыберите тип помещения:`,
+        { reply_markup: unitTypeKeyboard() }
+      );
+      return;
+    }
+
+    // Выбор типа помещения → просим ввести номер
+    if (data.startsWith("unit:")) {
+      const kind = data.slice(5); // "apt" или "premise"
+      const sess = (await getSession(chatId)) || {};
+      sess.unitType = kind;
+      sess.step = "unit_number";
+      await setSession(chatId, sess);
+      const label = kind === "premise" ? "нежилого помещения" : "квартиры";
+      await sendMessage(
+        chatId,
+        `Укажите номер ${label} (просто напишите число). Если заявка по дому в целом (подъезд, двор) — напишите <b>—</b> (прочерк).\n\n<i>Чтобы отменить — /cancel</i>`
       );
       return;
     }
@@ -736,12 +766,20 @@ async function handleUpdate(update) {
     }
 
     // --- Шаг: ввод квартиры (после выбора улицы и дома кнопками) ---
-    if (sess.step === "apart") {
+    if (sess.step === "unit_number") {
       if (!text) {
-        await sendMessage(chatId, "Пожалуйста, напишите номер квартиры (или «—», если заявка по дому).");
+        const label = sess.unitType === "premise" ? "нежилого помещения" : "квартиры";
+        await sendMessage(chatId, `Пожалуйста, напишите номер ${label} (или «—», если заявка по дому).`);
         return;
       }
-      sess.apart = (text === "-" || text === "—") ? "" : text;
+      const value = (text === "-" || text === "—") ? "" : text;
+      if (sess.unitType === "premise") {
+        sess.premise = value;
+        sess.apart = "";
+      } else {
+        sess.apart = value;
+        sess.premise = "";
+      }
       sess.step = "phone";
       await setSession(chatId, sess);
       await sendMessage(
