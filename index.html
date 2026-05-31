@@ -595,10 +595,10 @@
     </div>
     <div class="form-row">
       <div><div class="field-label">Этаж</div><input class="field-input" id="fFloor"></div>
-      <div><div class="field-label">Квартира</div><input class="field-input" id="fApart" placeholder="если жилое"></div>
+      <div><div class="field-label">Квартира</div><input class="field-input" id="fApart" placeholder="если жилое" oninput="refreshUnitLock()"></div>
     </div>
     <div class="form-row">
-      <div><div class="field-label">Нежилое помещение</div><input class="field-input" id="fPremise" placeholder="если нежилое"></div>
+      <div><div class="field-label">Нежилое помещение</div><input class="field-input" id="fPremise" placeholder="если нежилое" oninput="refreshUnitLock()"></div>
       <div></div>
     </div>
     <div class="form-row">
@@ -887,6 +887,26 @@ function unitLabel(r) {
   if (r.premise) return 'пом. ' + r.premise;
   if (r.apart) return 'кв. ' + r.apart;
   return '';
+}
+
+// Блокировка взаимоисключения квартиры/нежилого в форме заявки.
+// Если заполнено одно поле — второе становится недоступным и подсвечивается.
+function refreshUnitLock() {
+  const a = document.getElementById('fApart');
+  const p = document.getElementById('fPremise');
+  if (!a || !p) return;
+  const aFilled = a.value.trim() !== '';
+  const pFilled = p.value.trim() !== '';
+  if (aFilled && !pFilled) {
+    p.disabled = true; p.style.opacity = '0.4'; p.style.cursor = 'not-allowed';
+    a.disabled = false; a.style.opacity = ''; a.style.cursor = '';
+  } else if (pFilled && !aFilled) {
+    a.disabled = true; a.style.opacity = '0.4'; a.style.cursor = 'not-allowed';
+    p.disabled = false; p.style.opacity = ''; p.style.cursor = '';
+  } else {
+    a.disabled = false; a.style.opacity = ''; a.style.cursor = '';
+    p.disabled = false; p.style.opacity = ''; p.style.cursor = '';
+  }
 }
 
 // ========== DATA ==========
@@ -1807,6 +1827,7 @@ function openNewRequest() {
   fillStreetSelect('');
   updateAutoDeadline();
   updateAssigneeByType();
+  refreshUnitLock();
   document.getElementById('requestModal').classList.add('open');
 }
 
@@ -1835,6 +1856,7 @@ function editRequest(id) {
     document.getElementById('fHouse').value = r.house || '';
   }, 50);
   updateAssigneeByType(r.assignee);
+  refreshUnitLock();
   document.getElementById('requestModal').classList.add('open');
 }
 
