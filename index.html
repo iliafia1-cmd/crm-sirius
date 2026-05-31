@@ -594,7 +594,11 @@
     </div>
     <div class="form-row">
       <div><div class="field-label">Этаж</div><input class="field-input" id="fFloor"></div>
-      <div><div class="field-label">Квартира</div><input class="field-input" id="fApart"></div>
+      <div><div class="field-label">Квартира</div><input class="field-input" id="fApart" placeholder="если жилое"></div>
+    </div>
+    <div class="form-row">
+      <div><div class="field-label">Нежилое помещение</div><input class="field-input" id="fPremise" placeholder="если нежилое"></div>
+      <div></div>
     </div>
     <div class="form-row">
       <div>
@@ -820,6 +824,13 @@ function statusBadge(r, opts) {
   return `<span class="badge badge-done"${fs}>✓ Выполнена</span>${buildExtra(r.closedBy, r.doneAt)}`;
 }
 function getTypeDays(name) { const wt = (DB.workTypes||[]).find(w=>w.name===name); return wt ? (wt.days||1) : 1; }
+// Универсальный лейбл для квартиры или нежилого помещения
+function unitLabel(r) {
+  if (!r) return '';
+  if (r.premise) return 'пом. ' + r.premise;
+  if (r.apart) return 'кв. ' + r.apart;
+  return '';
+}
 
 // ========== DATA ==========
 const DEFAULT_DATA = {
@@ -1238,7 +1249,7 @@ function renderRequests() {
     const over = isOverdue(r);
     const statusHtml = statusBadge(r, {who:true});
     const addrLine = r.street ? `${r.street}, д.${r.house}` : (r.address||'—');
-    const subLine = [r.entrance?`Подъезд ${r.entrance}`:'', r.floor?`эт.${r.floor}`:'', r.apart?`кв.${r.apart}`:''].filter(Boolean).join(', ');
+    const subLine = [r.entrance?`Подъезд ${r.entrance}`:'', r.floor?`эт.${r.floor}`:'', unitLabel(r)].filter(Boolean).join(', ');
     const descLine = r.desc ? `<div style="font-size:11px;color:var(--muted);margin-top:3px;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${r.desc}">💬 ${r.desc}</div>` : '';
     const photoLine = (Array.isArray(r.photos) && r.photos.length) ? `<div style="font-size:11px;color:var(--accent2);margin-top:3px">📷 Фото: ${r.photos.length}</div>` : '';
     // Дата+автор для «Поступила» и «Принята в работу»
@@ -1290,7 +1301,7 @@ function renderRequests() {
     const worker = DB.users.find(u => u.id === r.assignee);
     const over = isOverdue(r);
     const addrLine = r.street ? `${r.street}, д.${r.house}` : (r.address||'—');
-    const subLine = [r.entrance?`Подъезд ${r.entrance}`:'', r.floor?`эт.${r.floor}`:'', r.apart?`кв.${r.apart}`:''].filter(Boolean).join(' · ');
+    const subLine = [r.entrance?`Подъезд ${r.entrance}`:'', r.floor?`эт.${r.floor}`:'', unitLabel(r)].filter(Boolean).join(' · ');
     const statusHtmlCard = statusBadge(r, {who:true});
     let actions = '';
     if (currentUser.role==='owner' || currentUser.role==='secretary')
@@ -1504,7 +1515,7 @@ function openDescEdit(id) {
   _descPhotoIds = Array.isArray(r.photos) ? r.photos.slice() : [];
   const addr = r.street ? `${r.street}, д.${r.house}` : (r.address||'');
   document.getElementById('descModalInfo').innerHTML =
-    `Заявка #${r.displayNumber||r.id} · ${addr}${r.apart?' кв.'+r.apart:''}`;
+    `Заявка #${r.displayNumber||r.id} · ${addr}${unitLabel(r)?' '+unitLabel(r):''}`;
   document.getElementById('descEditText').value = r.desc || '';
   document.getElementById('descPhotoStatus').textContent = '';
   document.getElementById('descModal').classList.add('open');
@@ -1639,7 +1650,7 @@ function printOrder(id) {
   let day='', monthRu='', year='', timeIn='';
   const m = (r.created||'').match(/(\d{1,2})\.(\d{1,2})\.(\d{4})\s+(\d{1,2}:\d{2})/);
   if (m) { day=m[1]; monthRu=monthsRu[parseInt(m[2],10)-1]||''; year=m[3]; timeIn=m[4]; }
-  const addrLine = [r.street && `${r.street}, д. ${r.house||''}`, r.apart && `кв. ${r.apart}`].filter(Boolean).join(', ');
+  const addrLine = [r.street && `${r.street}, д. ${r.house||''}`, unitLabel(r)].filter(Boolean).join(', ');
   const customerLine = [r.name, r.phone].filter(Boolean).join(', тел. ');
   const workerLine = worker ? worker.name : '';
   const number = r.displayNumber || ('#' + r.id);
@@ -1731,7 +1742,7 @@ function printOrder(id) {
 function openNewRequest() {
   editingRequestId = null;
   document.getElementById('modalTitle').textContent = 'Новая заявка';
-  ['fName','fPhone','fEntrance','fFloor','fApart','fDesc'].forEach(id=>document.getElementById(id).value='');
+  ['fName','fPhone','fEntrance','fFloor','fApart','fPremise','fDesc'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('fStatus').value = 'Новая';
   const today = new Date();
   document.getElementById('fCreated').value = nowDT();
@@ -1752,6 +1763,7 @@ function editRequest(id) {
   document.getElementById('fEntrance').value = r.entrance || '';
   document.getElementById('fFloor').value = r.floor || '';
   document.getElementById('fApart').value = r.apart || '';
+  document.getElementById('fPremise').value = r.premise || '';
   document.getElementById('fDesc').value = r.desc;
   document.getElementById('fCreated').value = r.created || '';
   document.getElementById('fDeadline').value = r.deadline || '';
@@ -1800,6 +1812,7 @@ function saveRequest() {
     entrance: document.getElementById('fEntrance').value.trim(),
     floor: document.getElementById('fFloor').value.trim(),
     apart: document.getElementById('fApart').value.trim(),
+    premise: document.getElementById('fPremise').value.trim(),
     type: document.getElementById('fType').value,
     desc: document.getElementById('fDesc').value.trim(),
     assignee: parseInt(document.getElementById('fAssignee').value)||null,
@@ -2466,7 +2479,7 @@ function renderMonitor() {
   if (_mapVisible && _map) setTimeout(() => renderMapMarkers(), 200);
 
   const taskCard = (r, workerId) => {
-    const addr = r.street ? `${r.street}, д.${r.house}${r.apart?' кв.'+r.apart:''}` : (r.address||'—');
+    const addr = r.street ? `${r.street}, д.${r.house}${unitLabel(r)?' '+unitLabel(r):''}` : (r.address||'—');
     const elapsed = timeSince(r.startedAt);
     const over = isOverdue(r);
     const borderColor = r.status==='Новая'?'var(--new)':r.status==='В работе'?'var(--inprog)':'var(--done)';
@@ -2553,7 +2566,7 @@ function showWorkerHistory(workerId, workerName) {
     </div>
   </div>`;
   html += all.map(r=>{
-    const addr=r.street?`${r.street}, д.${r.house}${r.apart?' кв.'+r.apart:''}`:( r.address||'—');
+    const addr=r.street?`${r.street}, д.${r.house}${unitLabel(r)?' '+unitLabel(r):''}`:( r.address||'—');
     const over=isOverdue(r);
     const borderColor=r.status==='Новая'?'var(--new)':r.status==='В работе'?'var(--inprog)':'var(--done)';
     const sb=statusBadge(r, {small:true});
@@ -2821,7 +2834,7 @@ function searchHistory() {
     return sMatch && hMatch && aMatch;
   });
   results.sort((a,b)=>(b.created||'').localeCompare(a.created||''));
-  const title = `${street}, д.${house}${apart?' кв.'+apart:''}`;
+  const title = `${street}, д.${house}${apart?' № '+apart:''}`;
   renderHistoryResults(results, `по адресу <b style="color:var(--accent)">${title}</b>`);
 }
 
@@ -2863,7 +2876,7 @@ function renderHistoryResults(results, titleHtml) {
         const worker=DB.users.find(u=>u.id===r.assignee);
         const sb=statusBadge(r, {who:true});
         const addr = r.street ? `${r.street}, д.${r.house}` : (r.address||'—');
-        return `<div class="request-card"><div class="rc-top"><div><div class="rc-name">${r.name}</div><div style="font-size:11px;color:var(--muted)">${r.phone||''}</div></div><div style="text-align:right"><div class="rc-id">#${r.displayNumber||r.id}</div><div style="margin-top:4px">${sb}</div></div></div><div style="font-size:12px;color:var(--muted);margin-bottom:4px">${addr}${r.apart?' · кв. '+r.apart:''}</div><div class="rc-meta"><span class="type-badge">${getTypeIcon(r.type)} ${r.type}</span>${worker?`<span style="font-size:12px;color:var(--muted)">${worker.name}</span>`:''}</div>${r.desc?`<div class="rc-desc">💬 ${r.desc}</div>`:''}<div style="font-size:11px;color:var(--muted)">${r.created||'—'}</div></div>`;
+        return `<div class="request-card"><div class="rc-top"><div><div class="rc-name">${r.name}</div><div style="font-size:11px;color:var(--muted)">${r.phone||''}</div></div><div style="text-align:right"><div class="rc-id">#${r.displayNumber||r.id}</div><div style="margin-top:4px">${sb}</div></div></div><div style="font-size:12px;color:var(--muted);margin-bottom:4px">${addr}${unitLabel(r)?' · '+unitLabel(r):''}</div><div class="rc-meta"><span class="type-badge">${getTypeIcon(r.type)} ${r.type}</span>${worker?`<span style="font-size:12px;color:var(--muted)">${worker.name}</span>`:''}</div>${r.desc?`<div class="rc-desc">💬 ${r.desc}</div>`:''}<div style="font-size:11px;color:var(--muted)">${r.created||'—'}</div></div>`;
       }).join('')}
     </div>`;
 }
